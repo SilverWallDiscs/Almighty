@@ -25,6 +25,7 @@ export interface TimelineClip {
   muted: boolean;
   effects: EffectId[];
   transitionBefore: TransitionId;
+  transitionDuration?: number;
 }
 export interface TitleOverlay {
   id: string;
@@ -35,12 +36,18 @@ export interface TitleOverlay {
   color: "white" | "yellow" | "cyan";
   y: number;
 }
+export interface TrackSettings {
+  locked: boolean;
+  hidden: boolean;
+  muted: boolean;
+}
 export interface Project {
   formatVersion: 1;
   name: string;
   settings: { width: number; height: number; fps: number };
   media: MediaAsset[];
   clips: TimelineClip[];
+  trackSettings?: Partial<Record<TrackId, TrackSettings>>;
   titles: TitleOverlay[];
   updatedAt: string;
 }
