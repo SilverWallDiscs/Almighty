@@ -154,6 +154,8 @@ fn export_video(project: Value, output_path: String) -> Result<String, String> {
         track == "A1" || track == "A2"
     }) {
         if bool_value(clip, "muted", false) { continue; }
+        let track_name = text(clip, "track", "");
+        if track_option(&project, &track_name, "muted") || track_option(&project, &track_name, "hidden") { continue; }
         let media_id = text(clip, "mediaId", "");
         let asset = media_by_id.get(&media_id).cloned().ok_or("An audio clip refers to missing media.")?;
         if !bool_value(&asset, "hasAudio", text(&asset, "kind", "") == "audio") {
