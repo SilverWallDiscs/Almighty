@@ -5,10 +5,12 @@ Almighty is a Rust-powered desktop video editor in active development. This repo
 ## Included in this first build
 
 - A dark editing workspace with a custom program monitor, media bin, synchronized video/audio timeline tracks, clip inspector, playback transport, frame stepping, speed control, volume, and fullscreen preview.
-- Timeline scrubbing with a draggable playhead, click-to-seek ruler, timeline zoom, drag-and-drop from the media bin, and clip drag-and-drop between tracks.
+- Timeline scrubbing with a draggable playhead, click-to-seek ruler, timeline zoom, and a draggable divider to resize the bottom timeline.
+- Drag video, image, and audio assets into tracks; insert at a target time without overwriting following clips, snap to frame/clip edges, move clips between compatible tracks, and multi-select with Ctrl/Cmd-click or Shift-click.
+- Razor/split editing, draggable trim handles, normal delete, ripple delete (Shift+Delete), previous/next edit navigation, Undo/Redo, and keyboard shortcuts.
+- Persistent per-track lock, visibility, and mute controls; transitions have adjustable duration and can be dropped on an edit point.
 - Import video, image, and audio files; inspect duration and stream metadata through FFprobe.
-- Assemble clips, trim in/out points, reorder clips, control audio volume and mute, and use undo/redo.
-- Export H.264 MP4 at 720p, Full HD, QHD, or 4K and common frame rates using FFmpeg.
+- Export H.264 MP4 at 720p, Full HD, QHD, or 4K and common frame rates using FFmpeg. Export preserves explicit clip positions and intentional gaps.
 - Transitions including cut, fade, dissolve, wipes, slides, circle reveals, smooth wipe, and radial.
 - Color/effect filters: cinematic, warm, cool, monochrome, vintage, blur, sharpen, invert, vignette, color boost, and film grain.
 - Text overlays rendered into exports.
@@ -35,7 +37,7 @@ The SHA-256 file protects against a corrupted or mismatched download; it is not 
 
 ## Current limitations
 
-This is an initial editor foundation, not yet a replacement for mature non-linear editors. The timeline UI is intentionally simple, playback is based on the currently selected source clip, and advanced keyframes, GPU rendering, proxy media, multi-camera editing, sophisticated compositing, subtitle tooling, and a licensed stock-music library remain future work. Export depends on the capabilities and filters in the FFmpeg build installed on each computer.
+This is an initial editor foundation, not yet a replacement for mature non-linear editors. The editor is still an early foundation: the program monitor uses browser playback and CSS effect approximations rather than a frame-accurate GPU compositor, so preview and final FFmpeg rendering can differ. Advanced keyframes, GPU rendering, proxy media, ripple/roll/slip/slide edit modes beyond ripple-delete, multi-camera editing, sophisticated compositing, subtitle tooling, and a licensed stock-music library remain future work. Export depends on the capabilities and filters in the FFmpeg build installed on each computer.
 
 ## License
 
