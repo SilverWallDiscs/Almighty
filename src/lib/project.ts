@@ -14,6 +14,7 @@ export function createEmptyProject(): Project {
     settings: { width: 1920, height: 1080, fps: 30 },
     media: [],
     clips: [],
+    trackSettings: { V1: { locked: false, hidden: false, muted: false }, A1: { locked: false, hidden: false, muted: false }, A2: { locked: false, hidden: false, muted: false } },
     titles: [],
     updatedAt: new Date().toISOString()
   };
@@ -42,7 +43,7 @@ export function makeClip(mediaId: string, track: TrackId, start: number, duratio
   return {
     id: Math.random().toString(36).slice(2) + Date.now().toString(36),
     mediaId, track, start, trimStart: 0, trimEnd: Math.max(0.1, duration),
-    volume: 1, muted: false, effects: [], transitionBefore: "cut"
+    volume: 1, muted: false, effects: [], transitionBefore: "cut", transitionDuration: 0.45
   };
 }
 export function formatTime(seconds: number): string {
