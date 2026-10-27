@@ -31,6 +31,7 @@
   "bundle": {
     "active": true,
     "targets": ["nsis"],
+    "icon": ["icons/icon.ico", "icons/icon.png"],
     "category": "Video",
     "shortDescription": "A clean, Rust-powered video editor",
     "longDescription": "Almighty is a timeline-based desktop video editor with FFmpeg export, effects, transitions, title overlays, and generated sound effects.",
