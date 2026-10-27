@@ -538,6 +538,9 @@ export default function App() {
       } else if (event.key.toLowerCase() === "c" && !event.ctrlKey && !event.metaKey) {
         event.preventDefault();
         setActiveEditTool((tool) => tool === "razor" ? "select" : "razor");
+      } else if (event.key.toLowerCase() === "n" && !event.ctrlKey && !event.metaKey) {
+        event.preventDefault();
+        setSnapEnabled((enabled) => !enabled);
       } else if ((event.key === "Delete" || event.key === "Backspace") && (selectedClipId || selectedClipIds.length)) {
         event.preventDefault();
         if (event.shiftKey) rippleRemoveSelection();
