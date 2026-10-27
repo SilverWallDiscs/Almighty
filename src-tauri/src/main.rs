@@ -89,6 +89,7 @@ fn write_project_file(path: String, data: String) -> Result<String, String> {
 fn num(value: &Value, key: &str, fallback: f64) -> f64 { value.get(key).and_then(Value::as_f64).unwrap_or(fallback) }
 fn text(value: &Value, key: &str, fallback: &str) -> String { value.get(key).and_then(Value::as_str).unwrap_or(fallback).to_string() }
 fn bool_value(value: &Value, key: &str, fallback: bool) -> bool { value.get(key).and_then(Value::as_bool).unwrap_or(fallback) }
+fn track_option(project: &Value, track: &str, key: &str) -> bool { project.pointer(&format!("/trackSettings/{track}/{key}")).and_then(Value::as_bool).unwrap_or(false) }
 fn escape_filter_path(path: &Path) -> String { path.to_string_lossy().replace('\\', "/").replace(':', "\\:") }
 
 fn safe_transition(name: &str) -> Option<&'static str> {
