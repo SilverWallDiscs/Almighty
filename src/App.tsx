@@ -636,11 +636,17 @@ export default function App() {
     } catch (error) { notify("Sound generation failed: " + String(error)); }
   };
   const updateClip = (clipId: string, mutator: (clip: TimelineClip) => TimelineClip) => {
-    updateProject((current) => ({ ...current, clips: reflowVideoClips(current.clips.map((clip) => clip.id === clipId ? mutator(clip) : clip)) }));
+    const target = project.clips.find((clip) => clip.id === clipId);
+    if (target && trackSettingsFor(target.track).locked) return notify("This track is locked.");
+    updateProject((current) => ({ ...current, clips: current.clips.map((clip) => clip.id === clipId ? mutator(clip) : clip) }));
   };
   const removeClip = (clipId: string) => {
-    updateProject((current) => ({ ...current, clips: reflowVideoClips(current.clips.filter((clip) => clip.id !== clipId)) }));
+    const target = project.clips.find((clip) => clip.id === clipId);
+    if (!target) return;
+    if (trackSettingsFor(target.track).locked) return notify("This track is locked.");
+    updateProject((current) => ({ ...current, clips: current.clips.filter((clip) => clip.id !== clipId) }));
     setSelectedClipId(undefined);
+    setSelectedClipIds((ids) => ids.filter((id) => id !== clipId));
   };
 
   const splitClipAt = (time: number, preferredClipId?: string) => {
