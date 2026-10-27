@@ -1051,7 +1051,7 @@ export default function App() {
             <button className="edit-tool-button" disabled={!future.length} onClick={redo} title="Redo (Ctrl+Shift+Z)"><Redo2 size={15} /><span>Redo</span></button>
             <button className="edit-tool-button" onClick={() => seekToCut(-1)} title="Previous edit point"><SkipBack size={15} /><span>Prev cut</span></button>
             <button className="edit-tool-button" onClick={() => seekToCut(1)} title="Next edit point"><SkipForward size={15} /><span>Next cut</span></button>
-            <span className="edit-toolbar-hint">{activeEditTool === "razor" ? "Click a clip to cut at that frame" : "Drag media to a track · select a clip to edit"}</span>
+            <span className="edit-toolbar-hint">{activeEditTool === "razor" ? "Click a clip to cut at that frame" : "Drag clips · Ctrl-click multi-select · Shift+Delete ripple"}</span>
           </div>
         </div>
         <section className={"timeline-section tool-" + activeEditTool} style={{ flexBasis: timelinePercent + "%" }}>
