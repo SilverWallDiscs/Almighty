@@ -186,21 +186,56 @@ fn export_video(project: Value, output_path: String) -> Result<String, String> {
         graph.push(format!("[{}:v]{}[vclip{}]", input_index, filters.join(","), index));
     }
 
+    let first_start = num(&video_inputs[0].0, "start", 0.0).max(0.0);
     let mut current_label = "vclip0".to_string();
     let mut video_duration = durations[0];
+    if first_start > 0.001 {
+        graph.push(format!("color=c=black:s={width}x{height}:r={fps}:d={first_start:.4},format=yuv420p[vgapstart]"));
+        graph.push("[vgapstart][vclip0]concat=n=2:v=1:a=0[vstart]".into());
+        current_label = "vstart".to_string();
+        video_duration += first_start;
+    }
     for index in 1..video_inputs.len() {
-        let transition = text(&video_inputs[index].0, "transitionBefore", "cut");
+        let clip = &video_inputs[index].0;
+        let transition = text(clip, "transitionBefore", "cut");
         let output_label = format!("vjoin{index}");
+        let desired_start = num(clip, "start", video_duration).max(0.0);
         if let Some(transition_name) = safe_transition(&transition) {
-            let blend = 0.45_f64.min(durations[index] * 0.45).min(video_duration * 0.45).max(0.1);
-            let offset = (video_duration - blend).max(0.0);
+            let requested_blend = num(clip, "transitionDuration", 0.45).clamp(0.1, 2.0);
+            let blend = requested_blend.min(durations[index] * 0.45).min(video_duration.max(0.1) * 0.45).max(0.1);
+            let required_end = desired_start + blend;
+            if required_end > video_duration + 0.001 {
+                let gap = required_end - video_duration;
+                let gap_label = format!("vgap{index}");
+                let padded_label = format!("vgapjoin{index}");
+                graph.push(format!("color=c=black:s={width}x{height}:r={fps}:d={gap:.4},format=yuv420p[{gap_label}]"));
+                graph.push(format!("[{current_label}][{gap_label}]concat=n=2:v=1:a=0[{padded_label}]"));
+                current_label = padded_label;
+                video_duration = required_end;
+            }
+            let offset = desired_start.min((video_duration - blend).max(0.0));
             graph.push(format!("[{current_label}][vclip{index}]xfade=transition={transition_name}:duration={blend:.4}:offset={offset:.4}[{output_label}]"));
-            video_duration = (video_duration + durations[index] - blend).max(0.1);
+            video_duration = video_duration.max(offset + durations[index]);
         } else {
+            let start = desired_start.max(video_duration);
+            if start > video_duration + 0.001 {
+                let gap = start - video_duration;
+                let gap_label = format!("vgap{index}");
+                let padded_label = format!("vgapjoin{index}");
+                graph.push(format!("color=c=black:s={width}x{height}:r={fps}:d={gap:.4},format=yuv420p[{gap_label}]"));
+                graph.push(format!("[{current_label}][{gap_label}]concat=n=2:v=1:a=0[{padded_label}]"));
+                current_label = padded_label;
+                video_duration = start;
+            }
             graph.push(format!("[{current_label}][vclip{index}]concat=n=2:v=1:a=0[{output_label}]"));
-            video_duration += durations[index];
+            video_duration = start + durations[index];
         }
         current_label = output_label;
+    }
+
+    if track_option(&project, "V1", "hidden") {
+        graph.push(format!("color=c=black:s={width}x{height}:r={fps}:d={video_duration:.4},format=yuv420p[vhidden]"));
+        current_label = "vhidden".to_string();
     }
 
     let mut title_files: Vec<PathBuf> = Vec::new();
