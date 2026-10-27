@@ -14,6 +14,7 @@ import { APP_VERSION, clipDuration, createEmptyProject, fileName, formatTime, ma
 
 type ToolId = "media" | "audio" | "effects" | "transitions" | "titles" | "settings";
 type EditTool = "select" | "razor";
+type TrackSettings = { locked: boolean; hidden: boolean; muted: boolean };
 type PreviewTransition = { fromAsset: MediaAsset; fromClip: TimelineClip; toAsset: MediaAsset; toClip: TimelineClip; progress: number; id: TransitionId };
 type ProbeResult = { duration: number; width?: number; height?: number; hasAudio: boolean; hasVideo: boolean };
 const TOOLS: { id: ToolId; label: string; icon: typeof Film; hint: string }[] = [
