@@ -479,7 +479,7 @@ export default function App() {
     }
     if (isPlaying) void video.play().catch(() => undefined);
     else video.pause();
-  }, [transitionPreview?.fromAsset.path, transitionPreview?.fromClip.id, isPlaying, playbackRate, seekRequest]);
+  }, [transitionPreview?.fromAsset.path, transitionPreview?.fromClip.id, currentTime, isPlaying, playbackRate, seekRequest]);
 
   useEffect(() => {
     const audioClips = project.clips.filter((clip) => clip.track === "A1" || clip.track === "A2");
