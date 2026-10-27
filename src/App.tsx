@@ -656,26 +656,30 @@ export default function App() {
       : project.clips.filter((clip) => time > clip.start + 0.04 && time < clip.start + clipDuration(clip) - 0.04).sort((a, b) => (a.track === "V1" ? -1 : 1));
     const clip = candidates[0] ?? project.clips.filter((item) => item.track === "V1" && time > item.start + 0.04 && time < item.start + clipDuration(item) - 0.04)[0];
     if (!clip) return notify("Place the playhead inside a clip, then use Split.");
-    const offset = time - clip.start;
+    if (trackSettingsFor(clip.track).locked) return notify("This track is locked.");
+    const snappedTime = snapTimelineTime(time, [clip.id]);
+    const offset = snappedTime - clip.start;
     if (offset <= 0.04 || offset >= clipDuration(clip) - 0.04) return notify("The playhead must be inside the selected clip to split it.");
     const sourceCut = clip.trimStart + offset;
     const secondHalf: TimelineClip = {
       ...clip,
       id: Math.random().toString(36).slice(2) + Date.now().toString(36),
-      start: time,
+      start: snappedTime,
       trimStart: sourceCut,
-      transitionBefore: "cut"
+      transitionBefore: "cut",
+      transitionDuration: 0.45
     };
     updateProject((current) => {
       const updated = current.clips.map((item) => item.id === clip.id ? { ...item, trimEnd: sourceCut } : item);
       const withSplit = [...updated, secondHalf];
-      return { ...current, clips: clip.track === "V1" ? reflowVideoClips(withSplit) : withSplit };
+      return { ...current, clips: withSplit };
     });
     setSelectedClipId(secondHalf.id);
+    setSelectedClipIds([clip.id, secondHalf.id]);
     setSelectedMediaId(clip.mediaId);
     setIsPlaying(false);
-    seekTo(time);
-    notify("Clip split at " + formatTime(time) + ".");
+    seekTo(snappedTime);
+    notify("Clip split at " + formatTime(snappedTime) + ".");
   };
   const splitAtPlayhead = () => splitClipAt(currentTime, selectedClipId);
   const applyTransitionBefore = (clipId: string, transitionId: TransitionId) => {
