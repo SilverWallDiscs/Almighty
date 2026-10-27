@@ -1,6 +1,6 @@
 :root {
  color-scheme:dark;font-family:Inter,"Segoe UI",-apple-system,BlinkMacSystemFont,sans-serif;font-synthesis:none;text-rendering:optimizeLegibility;
- --bg:#0b0e15;--panel:#111520;--panel2:#151a27;--border:#272d3d;--text:#f2f4fb;--text2:#a5aec2;--text3:#6f7890;--violet:#9778ff;--mint:#69dfc4;
+ --bg:#07090e;--panel:#0b0e14;--panel2:#0e121a;--border:#1b202a;--text:#f4f6fa;--text2:#9ba5b5;--text3:#606a7a;--violet:#9c85ff;--mint:#5fe2c4;
 }
 *{box-sizing:border-box}body{margin:0;min-width:980px;min-height:620px;overflow:hidden;background:var(--bg);color:var(--text)}
 button,input,select,textarea{font:inherit}button{color:inherit;cursor:pointer}button:disabled{opacity:.42;cursor:not-allowed}
@@ -132,3 +132,84 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 .timeline-clip[draggable="true"]{cursor:grab}
 .timeline-clip[draggable="true"]:active{cursor:grabbing}
 .track-canvas:has(.timeline-clip:hover){background-color:#141a28}
+
+
+/* Darker grading-room surfaces and a fixed lower timeline */
+:root{color-scheme:dark}
+body,.app-shell{background:#07090e;color:#f2f4fa}
+.topbar{background:#090c12;border-bottom-color:#1b202a}
+.tool-rail{background:#090c12;border-right-color:#1b202a}
+.media-panel,.inspector-panel{background:#0b0e14;border-color:#1b202a}
+.panel-heading,.inspector-heading{background:#0b0e14;border-color:#1b202a}
+.editor-main{background:#080a10;min-height:0}
+.preview-section{flex:1 1 auto;min-height:0;background:#080a10;border-bottom-color:#1b202a}
+.preview-stage{background:#080a10}
+.preview-monitor{background:#020306;border-color:#202633;box-shadow:0 18px 44px #0009,inset 0 0 0 1px #ffffff03}
+.preview-bottom,.preview-scrub-row{background:#090c12;border-color:#1b202a}
+.timeline-section{flex:0 0 41%;min-height:245px;max-height:none;background:#090c12;border-top-color:#202633}
+.timeline-header{background:#0c1017;border-bottom-color:#1c222d}
+.timeline-scroll{background:#090c12}
+.timeline-ruler,.ruler-content{background:#0c1017;border-color:#202633}
+.track-label{background:#0c1017;border-color:#202633}
+.track-canvas{background:linear-gradient(180deg,#090d13,#0b0f16);border-bottom-color:#1c222d}
+.track-a1 .track-canvas,.track-a2 .track-canvas{background:#0a0e14}
+.track-gridline{background:#1b222e}
+.timeline-footer{background:#0b0e14;border-top-color:#1b202a}
+.app-statusbar{background:#080a0f;border-top-color:#1b202a}
+@media(max-height:760px){
+  .preview-section{min-height:0}
+  .preview-stage{padding:8px 16px 6px}
+  .timeline-section{flex-basis:42%;min-height:225px}
+  .timeline-header{min-height:53px;padding-top:7px;padding-bottom:7px}
+  .track-canvas,.timeline-track{min-height:62px}
+  .track-a1 .track-canvas,.track-a2 .track-canvas{min-height:48px}
+}
+
+/* Editing toolbar */
+.edit-toolbar{display:flex;align-items:center;justify-content:space-between;gap:12px;flex:0 0 40px;min-height:40px;padding:0 14px;background:#0b0e14;border-top:1px solid #171d27;border-bottom:1px solid #202633}
+.edit-tool-group{display:flex;align-items:center;gap:4px;min-width:0}
+.edit-tool-button{display:inline-flex;align-items:center;justify-content:center;gap:7px;min-height:28px;padding:0 10px;border:1px solid transparent;border-radius:6px;background:transparent;color:#8994a8;font-size:10px;font-weight:650;white-space:nowrap;transition:background .12s,color .12s,border-color .12s}
+.edit-tool-button:hover:not(:disabled){background:#171d28;color:#e2e7f2;border-color:#252d3b}
+.edit-tool-button.active{border-color:#3a3159;background:#201a32;color:#c9baff;box-shadow:inset 0 0 0 1px #8d70e01a}
+.edit-tool-button:disabled{opacity:.28;cursor:not-allowed}
+.edit-toolbar-divider{width:1px;height:19px;margin:0 5px;background:#29303d}
+.edit-toolbar-hint{overflow:hidden;margin-left:8px;color:#5f6b80;font-size:9px;text-overflow:ellipsis;white-space:nowrap}
+.timeline-section .timeline-header p{color:#667286}
+.timeline-section.tool-razor .timeline-clip{cursor:crosshair}
+.timeline-section.tool-razor .track-canvas{cursor:crosshair}
+.timeline-section.tool-razor .timeline-clip:hover{border-color:#ffb36b;box-shadow:0 0 0 1px #ffb36b40}
+
+/* Real transition drop targets sit directly on the cut between two clips */
+.transition-drop-zone{position:absolute;top:50%;z-index:7;display:grid;place-items:center;width:26px;height:29px;transform:translate(-50%,-50%);padding:0;border:1px solid #394152;border-radius:6px;background:#111722;color:#8792a6;box-shadow:0 2px 8px #0008;cursor:copy;transition:color .12s,background .12s,border-color .12s,transform .12s}
+.transition-drop-zone:hover{transform:translate(-50%,-50%) scale(1.08);border-color:#9b84f9;background:#28203f;color:#e2d9ff}
+.transition-drop-zone.has-transition{border-color:#6d5cb4;background:#211a35;color:#c5b4ff;box-shadow:0 0 0 2px #9075ec1c,0 2px 8px #0009}
+.transition-card[draggable="true"]{cursor:grab}
+.transition-card[draggable="true"]:active{cursor:grabbing}
+.transition-card[draggable="true"]:hover{border-color:#655597}
+.timeline-playhead{pointer-events:none}
+
+/* Effect previews use the same clip effect stack as the export settings */
+.preview-frame{isolation:isolate}
+.transition-preview{position:relative;isolation:isolate}
+.transition-layer{position:absolute;inset:0;overflow:hidden;will-change:opacity,transform,clip-path}
+.transition-layer .preview-media{position:absolute;inset:0}
+.transition-outgoing{z-index:1}
+.transition-incoming{z-index:2}
+.preview-vignette,.preview-filmgrain{position:absolute;inset:0;z-index:3;pointer-events:none}
+.preview-vignette{background:radial-gradient(ellipse at center,transparent 38%,rgba(0,0,0,.72) 100%)}
+.preview-filmgrain{opacity:.16;background-image:repeating-radial-gradient(circle at 17% 29%,rgba(255,255,255,.4) 0,rgba(255,255,255,.4) .5px,transparent .8px,transparent 3px),repeating-linear-gradient(0deg,transparent 0,rgba(255,255,255,.1) 1px,transparent 2px);background-size:5px 5px,100% 3px;mix-blend-mode:soft-light;animation:preview-grain-drift .18s steps(2) infinite}
+@keyframes preview-grain-drift{0%{background-position:0 0,0 0}50%{background-position:2px -1px,0 1px}100%{background-position:-1px 2px,0 -1px}}
+.transition-layer .preview-vignette,.transition-layer .preview-filmgrain{z-index:4}
+.transition-layer .preview-vignette{pointer-events:none}
+.transition-layer .preview-title{z-index:5}
+.preview-title{z-index:5}
+@media(max-width:1280px){
+  .edit-toolbar{padding:0 8px;gap:4px}
+  .edit-tool-button{padding:0 7px}
+  .edit-toolbar-hint{max-width:190px}
+}
+@media(max-width:1080px){
+  .edit-tool-button span{display:none}
+  .edit-tool-button{width:31px;padding:0}
+  .edit-toolbar-hint{display:none}
+}
