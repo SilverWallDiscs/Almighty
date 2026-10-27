@@ -1,6 +1,6 @@
 import type { Project, TimelineClip, TrackId } from "../types";
 
-export const APP_VERSION = "0.1.0";
+export const APP_VERSION = "0.2.0";
 export const TRACKS: { id: TrackId; label: string; hint: string }[] = [
   { id: "V1", label: "Video 1", hint: "Picture" },
   { id: "A1", label: "Audio 1", hint: "Music / SFX" },
