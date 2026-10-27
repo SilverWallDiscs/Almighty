@@ -353,7 +353,7 @@ export default function App() {
     }
     if (isPlaying) void video.play().catch(() => setIsPlaying(false));
     else video.pause();
-  }, [activePreviewAsset?.path, activePreviewAsset?.kind, activePreviewClip?.id, isPlaying, playbackRate, previewVolume, seekRequest]);
+  }, [activePreviewAsset?.path, activePreviewAsset?.kind, activePreviewClip?.id, transitionPreview?.fromClip.id, transitionPreview?.toClip.id, isPlaying, playbackRate, previewVolume, seekRequest]);
 
   useEffect(() => {
     const video = transitionVideoRef.current;
