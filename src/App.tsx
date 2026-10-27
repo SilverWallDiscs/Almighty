@@ -295,7 +295,7 @@ export default function App() {
       const asset = project.media.find((media) => media.id === clip.mediaId);
       if (!player || !asset) continue;
       const clipEnd = clip.start + clipDuration(clip);
-      const insideClip = currentTime >= clip.start && currentTime < clipEnd && !clip.muted && asset.kind === "audio";
+      const insideClip = currentTime >= clip.start && currentTime < clipEnd && !clip.muted && (asset.kind === "audio" || asset.hasAudio === true);
       player.volume = Math.max(0, Math.min(1, clip.volume * previewVolume));
       player.playbackRate = playbackRate;
       if (!isPlaying || !insideClip) {
@@ -405,11 +405,11 @@ export default function App() {
     } catch (error) { notify("Import failed: " + String(error)); }
   };
 
-  const addAssetToTimeline = (asset: MediaAsset, track: TrackId = "V1") => {
+  const addAssetToTimeline = (asset: MediaAsset, track: TrackId = "V1", atTime?: number) => {
     if (track === "V1" && asset.kind === "audio") return notify("Audio-only files belong on Audio 1 or Audio 2.");
     if (track !== "V1" && asset.kind !== "audio" && !asset.hasAudio) return notify("This file has no audio stream to add to an audio track.");
     const sameTrack = project.clips.filter((clip) => clip.track === track);
-    const start = sameTrack.reduce((end, clip) => Math.max(end, clip.start + clipDuration(clip)), 0);
+    const start = atTime === undefined ? sameTrack.reduce((end, clip) => Math.max(end, clip.start + clipDuration(clip)), 0) : Math.max(0, atTime);
     const clip = makeClip(asset.id, track, start, asset.duration || 5);
     const clips = [...project.clips, clip];
     updateProject((current) => ({ ...current, clips: track === "V1" ? reflowVideoClips(clips) : clips }));
@@ -433,6 +433,32 @@ export default function App() {
   const removeClip = (clipId: string) => {
     updateProject((current) => ({ ...current, clips: reflowVideoClips(current.clips.filter((clip) => clip.id !== clipId)) }));
     setSelectedClipId(undefined);
+  };
+
+  const dropOnTrack = (event: React.DragEvent<HTMLDivElement>, track: TrackId) => {
+    event.preventDefault();
+    const targetTime = Math.max(0, (event.clientX - event.currentTarget.getBoundingClientRect().left) / pxPerSecond);
+    const movingClipId = event.dataTransfer.getData("application/x-almighty-clip");
+    if (movingClipId) {
+      const movingClip = project.clips.find((clip) => clip.id === movingClipId);
+      const source = movingClip ? project.media.find((media) => media.id === movingClip.mediaId) : undefined;
+      if (!movingClip || !source) return;
+      if (track === "V1" && source.kind === "audio") return notify("Audio-only clips belong on Audio 1 or Audio 2.");
+      if (track !== "V1" && source.kind !== "audio" && !source.hasAudio) return notify("This clip has no audio stream.");
+      updateProject((current) => ({
+        ...current,
+        clips: reflowVideoClips(current.clips.map((clip) => clip.id === movingClipId ? { ...clip, track, start: targetTime } : clip))
+      }));
+      setSelectedClipId(movingClipId);
+      setSelectedMediaId(source.id);
+      seekTo(targetTime);
+      return;
+    }
+    const assetId = event.dataTransfer.getData("application/x-almighty-media");
+    if (assetId) {
+      const asset = project.media.find((media) => media.id === assetId);
+      if (asset) addAssetToTimeline(asset, track, targetTime);
+    }
   };
   const moveClip = (clipId: string, delta: number) => {
     const clip = project.clips.find((item) => item.id === clipId);
@@ -556,7 +582,7 @@ export default function App() {
         {activeTool === "media" && <div className="panel-content">
           <button className="import-drop" onClick={importMedia}><div className="import-icon"><Upload size={19} /></div><strong>Import media</strong><span>Video, images and audio</span><small>Browse files on your computer</small></button>
           <div className="library-toolbar"><span>MEDIA BIN <b>{project.media.length}</b></span><div className="search-wrap"><Search size={14} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search assets" /></div></div>
-          {filteredMedia.length === 0 ? <div className="library-empty"><div className="library-empty-icon"><Layers3 size={23} /></div><strong>{project.media.length ? "No matching files" : "Your media lives here"}</strong><span>Import your clips, images, music and voiceovers to begin.</span></div> : <div className="media-list">{filteredMedia.map((asset) => <div className={"media-card " + (selectedMediaId === asset.id ? "selected" : "")} key={asset.id} onClick={() => { setSelectedMediaId(asset.id); setSelectedClipId(undefined); }}>
+          {filteredMedia.length === 0 ? <div className="library-empty"><div className="library-empty-icon"><Layers3 size={23} /></div><strong>{project.media.length ? "No matching files" : "Your media lives here"}</strong><span>Import your clips, images, music and voiceovers to begin.</span></div> : <div className="media-list">{filteredMedia.map((asset) => <div className={"media-card " + (selectedMediaId === asset.id ? "selected" : "")} key={asset.id} draggable onDragStart={(event) => { event.dataTransfer.setData("application/x-almighty-media", asset.id); event.dataTransfer.effectAllowed = "copy"; }} onClick={() => { setSelectedMediaId(asset.id); setSelectedClipId(undefined); }}>
             <button className="media-thumb" onClick={(event) => { event.stopPropagation(); setSelectedMediaId(asset.id); setSelectedClipId(undefined); }}>{asset.kind === "image" ? <img src={assetUrl(asset.path)} alt="" /> : <div className={"thumb-placeholder " + asset.kind}><IconForMedia kind={asset.kind} /></div>}<span className="thumb-duration">{formatTime(asset.duration)}</span></button>
             <div className="media-meta"><strong title={asset.name}>{asset.name}</strong><span><IconForMedia kind={asset.kind} /> {asset.kind.toUpperCase()} {asset.width && asset.height ? "· " + asset.width + "×" + asset.height : ""}</span><div className="media-add-actions">{asset.kind !== "audio" && <button onClick={(event) => { event.stopPropagation(); addAssetToTimeline(asset, "V1"); }}><Plus size={12} /> V1</button>}{(asset.kind === "audio" || asset.hasAudio) && <button onClick={(event) => { event.stopPropagation(); addAssetToTimeline(asset, "A1"); }}><Plus size={12} /> A1</button>}</div></div>
           </div>)}</div>}
@@ -651,12 +677,12 @@ export default function App() {
             <button className="timeline-playhead" style={{ left: 72 + currentTime * pxPerSecond }} title="Drag to scrub the timeline" onPointerDown={beginScrubbing} aria-label="Timeline playhead"><span className="playhead-head" /><span className="playhead-line" /></button>
             {TRACKS.map((track) => {
               const trackClips = project.clips.filter((clip) => clip.track === track.id);
-              return <div className={"timeline-track track-" + track.id.toLowerCase()} key={track.id}><div className="track-label"><strong>{track.id}</strong><span>{track.label}</span><small>{track.hint}</small></div><div className="track-canvas" style={{ width: timelineWidth }} onClick={(event) => { seekFromElement(event.clientX, event.currentTarget); if (event.target === event.currentTarget) setSelectedClipId(undefined); }}>
+              return <div className={"timeline-track track-" + track.id.toLowerCase()} key={track.id}><div className="track-label"><strong>{track.id}</strong><span>{track.label}</span><small>{track.hint}</small></div><div className="track-canvas" style={{ width: timelineWidth }} onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = "copy"; }} onDrop={(event) => dropOnTrack(event, track.id)} onClick={(event) => { seekFromElement(event.clientX, event.currentTarget); if (event.target === event.currentTarget) setSelectedClipId(undefined); }}>
                 {Array.from({ length: Math.ceil(timelineEnd / 5) + 1 }, (_, index) => index * 5).map((seconds) => <i className="track-gridline" key={seconds} style={{ left: seconds * pxPerSecond }} />)}
                 {trackClips.map((clip) => {
                   const asset = project.media.find((media) => media.id === clip.mediaId);
                   const duration = clipDuration(clip);
-                  return <button key={clip.id} className={"timeline-clip " + clip.track.toLowerCase() + "-clip " + (selectedClipId === clip.id ? "selected" : "")} style={{ left: clip.start * pxPerSecond, width: Math.max(74, duration * pxPerSecond - 4) }} onClick={(event) => { event.stopPropagation(); setSelectedClipId(clip.id); setSelectedMediaId(clip.mediaId); seekTo(clip.start); }}>
+                  return <button key={clip.id} draggable onDragStart={(event) => { event.dataTransfer.setData("application/x-almighty-clip", clip.id); event.dataTransfer.effectAllowed = "move"; }} className={"timeline-clip " + clip.track.toLowerCase() + "-clip " + (selectedClipId === clip.id ? "selected" : "")} style={{ left: clip.start * pxPerSecond, width: Math.max(74, duration * pxPerSecond - 4) }} onClick={(event) => { event.stopPropagation(); setSelectedClipId(clip.id); setSelectedMediaId(clip.mediaId); seekTo(clip.start); }}>
                     <span className="clip-edge left-edge" /><span className="clip-art">{clip.track === "V1" ? <Film size={13} /> : <Waves size={13} />}</span><span className="clip-text"><strong>{asset?.name ?? "Missing media"}</strong><small>{formatTime(duration)}{clip.effects.length ? " · " + clip.effects.length + " FX" : ""}</small></span>
                     {clip.track === "V1" && clip.transitionBefore !== "cut" && <span className="clip-transition" title={clip.transitionBefore}><ArrowLeftRight size={11} /></span>}
                     {clip.track !== "V1" && <span className="waveform-decoration">{Array.from({ length: 30 }, (_, i) => <i key={i} style={{ height: (4 + ((i * 17 + clip.id.length * 7) % 21)) + "px" }} />)}</span>}
@@ -693,7 +719,7 @@ export default function App() {
 
     <div className="hidden-audio-deck" aria-hidden="true">{project.clips.filter((clip) => clip.track === "A1" || clip.track === "A2").map((clip) => {
       const asset = project.media.find((media) => media.id === clip.mediaId);
-      if (!asset || asset.kind !== "audio") return null;
+      if (!asset || (asset.kind !== "audio" && !asset.hasAudio)) return null;
       return <audio key={clip.id} ref={(node) => { if (node) audioTimelineRefs.current.set(clip.id, node); else audioTimelineRefs.current.delete(clip.id); }} src={assetUrl(asset.path)} preload="auto" />;
     })}</div>
     <footer className="app-statusbar"><div><span className="status-led" /> {runtime?.ffmpegAvailable ? "FFmpeg ready" : "Setup needed: FFmpeg"} <span className="status-separator">·</span> {project.name}</div><div><span>{project.media.length} media</span><span className="status-separator">·</span><span>{project.clips.length} timeline clips</span><span className="status-separator">·</span><span>{project.settings.width}×{project.settings.height} / {project.settings.fps} FPS</span></div></footer>
