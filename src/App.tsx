@@ -991,6 +991,7 @@ export default function App() {
             </div>
           </div>
         </section>
+        <div className="timeline-resize-handle" onPointerDown={beginTimelineResize} title="Drag to resize timeline height" role="separator" aria-orientation="horizontal" />
         <div className="edit-toolbar" role="toolbar" aria-label="Editing tools">
           <div className="edit-tool-group">
             <button className={"edit-tool-button " + (activeEditTool === "select" ? "active" : "")} onClick={() => setActiveEditTool("select")} title="Selection tool (V)"><MousePointer2 size={15} /><span>Select</span></button>
