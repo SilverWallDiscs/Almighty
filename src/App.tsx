@@ -953,7 +953,7 @@ export default function App() {
         </div>}
       </section>
 
-      <main className="editor-main">
+      <main ref={editorMainRef} className="editor-main" onPointerMove={handleEditorPointerMove} onPointerUp={() => setIsResizingTimeline(false)} onPointerCancel={() => setIsResizingTimeline(false)}>
         <section className="preview-section">
           <div className="section-toolbar">
             <div className="section-toolbar-title"><Monitor size={15} /><span>PROGRAM MONITOR</span><span className="toolbar-muted">· {project.settings.width} × {project.settings.height}</span></div>
