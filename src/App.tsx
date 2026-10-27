@@ -998,11 +998,14 @@ export default function App() {
             <button className={"edit-tool-button " + (activeEditTool === "razor" ? "active" : "")} onClick={() => setActiveEditTool("razor")} title="Razor tool (C): click a clip to split it"><Scissors size={15} /><span>Razor</span></button>
             <span className="edit-toolbar-divider" />
             <button className="edit-tool-button" onClick={splitAtPlayhead} title="Split selected clip at playhead (S)"><Scissors size={15} /><span>Split</span></button>
+            <button className={"edit-tool-button " + (snapEnabled ? "active" : "")} onClick={() => setSnapEnabled((enabled) => !enabled)} title="Toggle snapping to clip edges, cuts and playhead (N)"><Magnet size={15} /><span>Snap</span></button>
             <button className="edit-tool-button" disabled={!selectedClip} onClick={() => selectedClip && removeClip(selectedClip.id)} title="Delete selected clip (Delete)"><Trash2 size={15} /><span>Delete</span></button>
           </div>
           <div className="edit-tool-group">
             <button className="edit-tool-button" disabled={!past.length} onClick={undo} title="Undo (Ctrl+Z)"><Undo2 size={15} /><span>Undo</span></button>
             <button className="edit-tool-button" disabled={!future.length} onClick={redo} title="Redo (Ctrl+Shift+Z)"><Redo2 size={15} /><span>Redo</span></button>
+            <button className="edit-tool-button" onClick={() => seekToCut(-1)} title="Previous edit point"><SkipBack size={15} /><span>Prev cut</span></button>
+            <button className="edit-tool-button" onClick={() => seekToCut(1)} title="Next edit point"><SkipForward size={15} /><span>Next cut</span></button>
             <span className="edit-toolbar-hint">{activeEditTool === "razor" ? "Click a clip to cut at that frame" : "Drag media to a track · select a clip to edit"}</span>
           </div>
         </div>
