@@ -220,3 +220,31 @@ body,.app-shell{background:#07090e;color:#f2f4fa}
 .transition-drop-zone:focus-visible{outline:2px solid #9c85ff;outline-offset:2px}
 
 /* Timeline editing tools are dockable and keyboard-first. */
+
+
+/* Final-cut editing controls */
+.timeline-resize-handle{position:relative;z-index:9;flex:0 0 6px;height:6px;min-height:6px;border-top:1px solid #1d2430;border-bottom:1px solid #111720;background:#0a0d13;cursor:row-resize;touch-action:none}
+.timeline-resize-handle:before{content:"";position:absolute;left:calc(50% - 22px);top:2px;width:44px;height:2px;border-radius:2px;background:#3a4353}
+.timeline-resize-handle:hover{background:#131824}
+.timeline-resize-handle:hover:before{background:#a18aff}
+.track-lock-button,.track-state-button{position:absolute;top:3px;display:grid;place-items:center;width:14px;height:13px;padding:0;border:1px solid transparent;border-radius:3px;background:transparent;color:#657188;cursor:pointer}
+.track-lock-button{left:3px}
+.track-state-button:nth-of-type(2){left:19px}
+.track-state-button:nth-of-type(3){left:35px}
+.track-lock-button:hover,.track-state-button:hover{border-color:#4c3e6f;background:#251e39;color:#d7ceff}
+.track-label strong{margin-top:10px}
+.track-label small{margin-top:1px}
+.timeline-clip.locked{opacity:.78}
+.track-hidden .track-canvas{opacity:.3;filter:grayscale(.8)}
+.track-hidden .track-label{color:#596477}
+.trim-handle{z-index:5;width:8px!important;background:#bcaeffb8!important;cursor:ew-resize;touch-action:none}
+.trim-handle:hover{width:10px!important;background:#f0c7ff!important}
+.timeline-section.tool-razor .trim-handle{display:none}
+.timeline-section.tool-razor .timeline-clip{cursor:crosshair}
+.timeline-section:not(.tool-razor) .timeline-clip[draggable="true"]{cursor:grab}
+.timeline-section:not(.tool-razor) .timeline-clip[draggable="true"]:active{cursor:grabbing}
+.track-label{overflow:visible}
+@media(max-height:760px){
+  .timeline-resize-handle{flex-basis:5px;height:5px;min-height:5px}
+  .track-label strong{margin-top:8px}
+}
