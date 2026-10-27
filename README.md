@@ -40,3 +40,13 @@ This is an initial editor foundation, not yet a replacement for mature non-linea
 ## License
 
 MIT. See LICENSE.
+
+
+## Editing workflow
+
+- The timeline stays docked at the bottom of the editor workspace.
+- Drag video and image assets from the media bin to Video 1; drag audio or clips with audio to Audio 1 / Audio 2.
+- Use **Razor** or **Split** to divide a clip, select a clip and press Delete to remove it, and use Undo / Redo to review edits.
+- Drag an effect from Effects directly onto a video clip. The program monitor shows a real-time CSS approximation of the clip's applied effects; the FFmpeg renderer applies its corresponding export filters.
+- Drag a transition preset from Transitions onto the transition drop target at a cut between two Video 1 clips. The monitor previews the transition during its overlap window.
+- Shortcuts: Space play/pause, arrows step frame-by-frame, C toggle Razor, S split the selected clip at the playhead, V select tool, Delete remove selection, Ctrl+Z undo, Ctrl+Shift+Z redo.
