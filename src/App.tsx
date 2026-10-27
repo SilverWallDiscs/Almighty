@@ -475,7 +475,7 @@ export default function App() {
     const sourceTime = transitionPreview.fromClip.trimStart + Math.max(0, currentTime - transitionPreview.fromClip.start);
     video.muted = true;
     video.playbackRate = playbackRate;
-    if (video.readyState >= 1 && (Math.abs(video.currentTime - sourceTime) > 0.6 || seekRequest > 0)) {
+    if (video.readyState >= 1 && (!isPlaying || Math.abs(video.currentTime - sourceTime) > 0.6)) {
       try { video.currentTime = Math.max(0, sourceTime); } catch { /* Wait for metadata. */ }
     }
     if (isPlaying) void video.play().catch(() => undefined);
