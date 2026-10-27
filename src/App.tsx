@@ -685,14 +685,46 @@ export default function App() {
   const applyTransitionBefore = (clipId: string, transitionId: TransitionId) => {
     const clip = project.clips.find((item) => item.id === clipId);
     if (!clip || clip.track !== "V1") return notify("Choose a video clip after a cut to apply a transition.");
-    const ordered = videoTimelineClips;
-    if (ordered[0]?.id === clip.id && transitionId !== "cut") return notify("A transition needs a preceding video clip. Drop it on a cut between clips.");
+    if (trackSettingsFor("V1").locked) return notify("Video 1 is locked.");
+    const ordered = project.clips.filter((item) => item.track === "V1").slice().sort((a, b) => a.start - b.start);
+    const index = ordered.findIndex((item) => item.id === clipId);
+    const previous = ordered[index - 1];
+    if (!previous && transitionId !== "cut") return notify("A transition needs a preceding video clip. Drop it on a cut between clips.");
+    const duration = Math.max(0.1, clip.transitionDuration ?? 0.45);
+    let nextStart = clip.start;
+    if (previous && transitionId !== "cut") nextStart = Math.max(0, previous.start + clipDuration(previous) - duration);
+    else if (previous && clip.transitionBefore !== "cut" && transitionId === "cut") nextStart = previous.start + clipDuration(previous);
+    const delta = nextStart - clip.start;
     updateProject((current) => ({
       ...current,
-      clips: reflowVideoClips(current.clips.map((item) => item.id === clipId ? { ...item, transitionBefore: transitionId } : item))
+      clips: current.clips.map((item) => {
+        if (item.id === clipId) return { ...item, start: nextStart, transitionBefore: transitionId, transitionDuration: duration };
+        if (item.track === "V1" && item.start > clip.start + 0.0001) return { ...item, start: Math.max(0, item.start + delta) };
+        return item;
+      })
     }));
     setSelectedClipId(clipId);
+    setSelectedClipIds([clipId]);
     notify(transitionId === "cut" ? "Transition removed." : "Transition applied between clips.");
+  };
+  const updateTransitionDuration = (clipId: string, duration: number) => {
+    const clip = project.clips.find((item) => item.id === clipId);
+    if (!clip || clip.track !== "V1" || clip.transitionBefore === "cut") return;
+    if (trackSettingsFor("V1").locked) return notify("Video 1 is locked.");
+    const ordered = project.clips.filter((item) => item.track === "V1").slice().sort((a, b) => a.start - b.start);
+    const previous = ordered[ordered.findIndex((item) => item.id === clipId) - 1];
+    if (!previous) return;
+    const oldStart = clip.start;
+    const newStart = Math.max(0, previous.start + clipDuration(previous) - duration);
+    const delta = newStart - oldStart;
+    updateProject((current) => ({
+      ...current,
+      clips: current.clips.map((item) => {
+        if (item.id === clipId) return { ...item, start: newStart, transitionDuration: duration };
+        if (item.track === "V1" && item.start > oldStart + 0.0001) return { ...item, start: Math.max(0, item.start + delta) };
+        return item;
+      })
+    }));
   };
 
   const dropOnTrack = (event: ReactDragEvent<HTMLDivElement>, track: TrackId) => {
