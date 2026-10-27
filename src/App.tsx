@@ -729,37 +729,60 @@ export default function App() {
 
   const dropOnTrack = (event: ReactDragEvent<HTMLDivElement>, track: TrackId) => {
     event.preventDefault();
-    const targetTime = Math.max(0, (event.clientX - event.currentTarget.getBoundingClientRect().left) / pxPerSecond);
+    if (trackSettingsFor(track).locked) return notify("This track is locked.");
+    const rawTime = (event.clientX - event.currentTarget.getBoundingClientRect().left) / pxPerSecond;
     const transitionId = event.dataTransfer.getData("application/x-almighty-transition") as TransitionId;
     if (transitionId && track === "V1") {
+      const targetTime = snapTimelineTime(rawTime);
       const sorted = project.clips.filter((clip) => clip.track === "V1").slice().sort((a, b) => a.start - b.start);
       const nextCut = sorted.slice(1).map((clip) => ({ clip, distance: Math.abs(clip.start - targetTime) })).sort((a, b) => a.distance - b.distance)[0];
       if (!nextCut || nextCut.distance > Math.max(0.85, 36 / pxPerSecond)) return notify("Drop a transition directly on a cut between two video clips.");
       applyTransitionBefore(nextCut.clip.id, transitionId);
       return;
     }
-    const movingClipId = event.dataTransfer.getData("application/x-almighty-clip");
-    if (movingClipId) {
-      const movingClip = project.clips.find((clip) => clip.id === movingClipId);
-      const source = movingClip ? project.media.find((media) => media.id === movingClip.mediaId) : undefined;
-      if (!movingClip || !source) return;
-      if (track === "V1" && source.kind === "audio") return notify("Audio-only clips belong on Audio 1 or Audio 2.");
-      if (track !== "V1" && source.kind !== "audio" && !source.hasAudio) return notify("This clip has no audio stream.");
+
+    const idsText = event.dataTransfer.getData("application/x-almighty-clips");
+    const singleId = event.dataTransfer.getData("application/x-almighty-clip");
+    let movingIds = singleId ? [singleId] : [];
+    if (idsText) {
+      try {
+        const parsed = JSON.parse(idsText) as string[];
+        if (Array.isArray(parsed) && parsed.length) movingIds = parsed;
+      } catch { /* Fall back to a single clip. */ }
+    }
+
+    if (movingIds.length) {
+      const movingClips = project.clips.filter((clip) => movingIds.includes(clip.id));
+      if (movingClips.length !== movingIds.length) return notify("One or more selected clips are unavailable.");
+      const blocked = movingClips.find((clip) => trackSettingsFor(clip.track).locked);
+      if (blocked) return notify("Unlock " + blocked.track + " before moving its clips.");
+      const incompatible = movingClips.find((clip) => {
+        const source = project.media.find((media) => media.id === clip.mediaId);
+        return track === "V1" ? source?.kind === "audio" : source?.kind !== "audio" && !source?.hasAudio;
+      });
+      if (incompatible) return notify("The selected clips are not compatible with " + track + ".");
+      const primary = movingClips.find((clip) => clip.id === singleId) ?? movingClips[0];
+      const grabOffset = Number(event.dataTransfer.getData("application/x-almighty-grab-offset") || 0);
+      const targetTime = snapTimelineTime(rawTime - grabOffset, movingIds);
+      const delta = targetTime - primary.start;
       updateProject((current) => ({
         ...current,
-        clips: reflowVideoClips(current.clips.map((clip) => clip.id === movingClipId ? { ...clip, track, start: targetTime } : clip))
+        clips: current.clips.map((clip) => movingIds.includes(clip.id) ? { ...clip, track, start: Math.max(0, clip.start + delta) } : clip)
       }));
-      setSelectedClipId(movingClipId);
-      setSelectedMediaId(source.id);
+      setSelectedClipId(primary.id);
+      setSelectedClipIds(movingIds);
+      setSelectedMediaId(primary.mediaId);
       seekTo(targetTime);
       return;
     }
-    const assetId = event.dataTransfer.getData("application/x-almighty-media");
-    if (assetId) {
-      const asset = project.media.find((media) => media.id === assetId);
-      if (asset) addAssetToTimeline(asset, track, targetTime);
+
+    const mediaId = event.dataTransfer.getData("application/x-almighty-media");
+    if (mediaId) {
+      const asset = project.media.find((media) => media.id === mediaId);
+      if (asset) addAssetToTimeline(asset, track, rawTime);
     }
   };
+
   const moveClip = (clipId: string, delta: number) => {
     const clip = project.clips.find((item) => item.id === clipId);
     if (!clip) return;
