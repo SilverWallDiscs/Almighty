@@ -213,3 +213,8 @@ body,.app-shell{background:#07090e;color:#f2f4fa}
   .edit-tool-button{width:31px;padding:0}
   .edit-toolbar-hint{display:none}
 }
+
+.effect-card[draggable="true"]{cursor:grab}
+.effect-card[draggable="true"]:active{cursor:grabbing}
+.timeline-section .transition-drop-zone{touch-action:none}
+.transition-drop-zone:focus-visible{outline:2px solid #9c85ff;outline-offset:2px}
