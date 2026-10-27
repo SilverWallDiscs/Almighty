@@ -1,10 +1,10 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type RefObject } from "react";
 import {
   AlertTriangle, ArrowLeftRight, AudioLines, Check, ChevronDown, Clapperboard,
   Clock3, Download, ExternalLink, FileAudio, FileImage, FileVideo, Film, FolderOpen,
-  HardDrive, Layers3, Loader2, Music2, Palette, Play, Plus, RefreshCw, Redo2, Save,
-  Scissors, Search, Settings2, SlidersHorizontal, Sparkles, Trash2, Type, Undo2,
-  Upload, Volume2, Wand2, Waves, X, Zap, Monitor
+  HardDrive, Layers3, Loader2, Music2, Palette, Pause, Play, Plus, RefreshCw, Redo2, Save,
+  Scissors, Search, Settings2, SlidersHorizontal, SkipBack, SkipForward, Sparkles,
+  Trash2, Type, Undo2, Upload, Volume2, Wand2, Waves, X, Zap, Monitor, Maximize2, ZoomIn, ZoomOut
 } from "lucide-react";
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { open, save } from "@tauri-apps/plugin-dialog";
@@ -69,14 +69,34 @@ function IconForMedia({ kind }: { kind: MediaAsset["kind"] }) {
   if (kind === "image") return <FileImage size={15} />;
   return <FileVideo size={15} />;
 }
-function Preview({ asset, clip, project }: { asset?: MediaAsset; clip?: TimelineClip; project: Project }) {
-  const time = clip?.start ?? 0;
-  const activeTitle = project.titles.find((title) => title.start <= time + 0.1 && title.end >= time);
-  if (!asset) return <div className="empty-preview"><div className="empty-preview-mark"><Clapperboard size={28} /></div><strong>Your canvas is ready</strong><span>Import media, then add clips to the timeline to start editing.</span></div>;
+function Preview({
+  asset, clip, project, timelineTime, videoRef, onTimeUpdate, onLoadedMetadata, onEnded
+}: {
+  asset?: MediaAsset;
+  clip?: TimelineClip;
+  project: Project;
+  timelineTime: number;
+  videoRef: RefObject<HTMLVideoElement | null>;
+  onTimeUpdate: (event: React.SyntheticEvent<HTMLVideoElement>) => void;
+  onLoadedMetadata: (event: React.SyntheticEvent<HTMLVideoElement>) => void;
+  onEnded: () => void;
+}) {
+  const activeTitle = project.titles.find((title) => title.start <= timelineTime && title.end >= timelineTime);
+  if (!asset) return <div className="empty-preview"><div className="empty-preview-mark"><Clapperboard size={28} /></div><strong>Program monitor</strong><span>Move the playhead over a clip to see the edit here.</span></div>;
   if (asset.kind === "image") return <div className="preview-frame"><img className="preview-media" src={assetUrl(asset.path)} alt={asset.name} />{activeTitle && <div className="preview-title" style={{ color: activeTitle.color, top: (activeTitle.y * 100) + "%" }}>{activeTitle.text}</div>}</div>;
-  if (asset.kind === "audio") return <div className="audio-preview"><div className="audio-preview-art"><AudioLines size={50} strokeWidth={1.4} /></div><strong>{asset.name}</strong><span>Audio asset · {formatTime(asset.duration)}</span><audio controls preload="metadata" src={assetUrl(asset.path)} /></div>;
-  return <div className="preview-frame"><video key={asset.path} className="preview-media" src={assetUrl(asset.path)} controls preload="metadata" />{activeTitle && <div className="preview-title" style={{ color: activeTitle.color, top: (activeTitle.y * 100) + "%" }}>{activeTitle.text}</div>}</div>;
+  if (asset.kind === "audio") return <div className="audio-preview"><div className="audio-preview-art"><AudioLines size={50} strokeWidth={1.4} /></div><strong>{asset.name}</strong><span>Audio source · {formatTime(asset.duration)}</span><audio controls preload="metadata" src={assetUrl(asset.path)} /></div>;
+  return <div className="preview-frame"><video ref={videoRef} key={asset.path} className="preview-media" src={assetUrl(asset.path)} controls={false} playsInline preload="auto" onTimeUpdate={onTimeUpdate} onLoadedMetadata={onLoadedMetadata} onEnded={onEnded} />{activeTitle && <div className="preview-title" style={{ color: activeTitle.color, top: (activeTitle.y * 100) + "%" }}>{activeTitle.text}</div>}<div className="monitor-corner monitor-corner-tl" /><div className="monitor-corner monitor-corner-br" /></div>;
 }
+function formatTimecode(seconds: number, fps: number): string {
+  const safe = Math.max(0, seconds || 0);
+  const whole = Math.floor(safe);
+  const frames = Math.floor((safe - whole) * fps);
+  const hours = Math.floor(whole / 3600);
+  const minutes = Math.floor((whole % 3600) / 60);
+  const secs = whole % 60;
+  return [hours, minutes, secs, frames].map((part) => String(part).padStart(2, "0")).join(":");
+}
+
 function playSoundPreview(id: string) {
   try {
     const context = new AudioContext();
@@ -126,14 +146,30 @@ export default function App() {
   const [exporting, setExporting] = useState(false);
   const [toast, setToast] = useState("");
   const [projectMenu, setProjectMenu] = useState(false);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [playbackRate, setPlaybackRate] = useState(1);
+  const [previewVolume, setPreviewVolume] = useState(1);
+  const [seekRequest, setSeekRequest] = useState(0);
+  const [isScrubbing, setIsScrubbing] = useState(false);
+  const [timelineZoom, setTimelineZoom] = useState(86);
+  const previewVideoRef = useRef<HTMLVideoElement | null>(null);
+  const timelineBoardRef = useRef<HTMLDivElement | null>(null);
+  const previewMonitorRef = useRef<HTMLDivElement | null>(null);
 
   const selectedClip = project.clips.find((clip) => clip.id === selectedClipId);
   const selectedAsset = project.media.find((media) => media.id === (selectedClip?.mediaId ?? selectedMediaId));
   const timelineEnd = timelineDuration(project);
-  const pxPerSecond = 86;
+  const pxPerSecond = timelineZoom;
   const timelineWidth = Math.max(1100, timelineEnd * pxPerSecond + 90);
   const filteredMedia = project.media.filter((media) => media.name.toLowerCase().includes(search.toLowerCase()));
   const totalDuration = project.clips.filter((clip) => clip.track === "V1").reduce((total, clip) => Math.max(total, clip.start + clipDuration(clip)), 0);
+  const videoTimelineClips = project.clips.filter((clip) => clip.track === "V1").slice().sort((a, b) => a.start - b.start);
+  const activePreviewClip = videoTimelineClips.find((clip) => currentTime >= clip.start - 0.0001 && currentTime < clip.start + clipDuration(clip) - 0.0001);
+  const activePreviewAsset = activePreviewClip
+    ? project.media.find((media) => media.id === activePreviewClip.mediaId)
+    : videoTimelineClips.length === 0 ? selectedAsset : undefined;
+  const previewDuration = Math.max(totalDuration, videoTimelineClips.length === 0 ? (selectedAsset?.duration ?? 0) : 0, 0.1);
   const selectedClipAsset = selectedClip ? project.media.find((media) => media.id === selectedClip.mediaId) : undefined;
 
   const notify = useCallback((message: string) => {
@@ -162,6 +198,140 @@ export default function App() {
       catch { /* The project stores paths, not actual media bytes. */ }
     }
   }, [project, ready]);
+
+  const seekTo = (seconds: number) => {
+    const clamped = Math.max(0, Math.min(seconds, Math.max(previewDuration, totalDuration, 0)));
+    setCurrentTime(clamped);
+    setSeekRequest((value) => value + 1);
+  };
+
+  const togglePlayback = () => {
+    if (!isPlaying && previewDuration > 0 && currentTime >= previewDuration - 0.02) seekTo(0);
+    setIsPlaying((value) => !value);
+  };
+
+  const handleVideoTimeUpdate = (event: React.SyntheticEvent<HTMLVideoElement>) => {
+    const video = event.currentTarget;
+    if (activePreviewClip) {
+      const clipEnd = activePreviewClip.start + clipDuration(activePreviewClip);
+      if (video.currentTime >= activePreviewClip.trimEnd - 0.025) {
+        setCurrentTime(clipEnd);
+        if (clipEnd >= totalDuration - 0.04) setIsPlaying(false);
+      } else {
+        setCurrentTime(activePreviewClip.start + Math.max(0, video.currentTime - activePreviewClip.trimStart));
+      }
+    } else {
+      setCurrentTime(Math.min(video.currentTime, previewDuration));
+      if (video.ended) setIsPlaying(false);
+    }
+  };
+
+  const handleVideoLoadedMetadata = (event: React.SyntheticEvent<HTMLVideoElement>) => {
+    const video = event.currentTarget;
+    const target = activePreviewClip
+      ? activePreviewClip.trimStart + Math.max(0, currentTime - activePreviewClip.start)
+      : currentTime;
+    if (Math.abs(video.currentTime - target) > 0.08) {
+      try { video.currentTime = Math.max(0, target); } catch { /* Metadata can finish loading a moment later. */ }
+    }
+    video.playbackRate = playbackRate;
+    video.volume = previewVolume;
+    if (isPlaying) void video.play().catch(() => setIsPlaying(false));
+  };
+
+  const handleVideoEnded = () => {
+    if (activePreviewClip) {
+      const end = activePreviewClip.start + clipDuration(activePreviewClip);
+      setCurrentTime(end);
+      if (end >= totalDuration - 0.04) setIsPlaying(false);
+    } else {
+      setIsPlaying(false);
+    }
+  };
+
+  const seekFromElement = (clientX: number, element: HTMLElement) => {
+    const rect = element.getBoundingClientRect();
+    seekTo((clientX - rect.left) / pxPerSecond);
+  };
+
+  const scrubToClientX = (clientX: number) => {
+    const board = timelineBoardRef.current;
+    if (!board) return;
+    const rect = board.getBoundingClientRect();
+    seekTo((clientX - rect.left - 72) / pxPerSecond);
+  };
+
+  const beginScrubbing = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    event.preventDefault();
+    setIsPlaying(false);
+    setIsScrubbing(true);
+    timelineBoardRef.current?.setPointerCapture(event.pointerId);
+  };
+
+  useEffect(() => {
+    const video = previewVideoRef.current;
+    if (!video) return;
+    if (activePreviewAsset?.kind !== "video") {
+      video.pause();
+      return;
+    }
+    const sourceTime = activePreviewClip
+      ? activePreviewClip.trimStart + Math.max(0, currentTime - activePreviewClip.start)
+      : currentTime;
+    video.volume = previewVolume;
+    video.playbackRate = playbackRate;
+    if (video.readyState >= 1 && (Math.abs(video.currentTime - sourceTime) > 0.6 || seekRequest > 0)) {
+      try { video.currentTime = Math.max(0, sourceTime); } catch { /* Wait for media metadata. */ }
+    }
+    if (isPlaying) void video.play().catch(() => setIsPlaying(false));
+    else video.pause();
+  }, [activePreviewAsset?.path, activePreviewAsset?.kind, activePreviewClip?.id, isPlaying, playbackRate, previewVolume, seekRequest]);
+
+  useEffect(() => {
+    if (!isPlaying || activePreviewAsset?.kind === "video") return;
+    let frameId = 0;
+    let lastTick = performance.now();
+    const tick = (now: number) => {
+      const elapsed = Math.min(0.1, (now - lastTick) / 1000);
+      lastTick = now;
+      setCurrentTime((value) => {
+        const next = value + elapsed * playbackRate;
+        if (next >= previewDuration) {
+          setIsPlaying(false);
+          return previewDuration;
+        }
+        return next;
+      });
+      frameId = requestAnimationFrame(tick);
+    };
+    frameId = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frameId);
+  }, [isPlaying, activePreviewAsset?.kind, playbackRate, previewDuration]);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (target && (["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName) || target.isContentEditable)) return;
+      if (event.code === "Space") {
+        event.preventDefault();
+        togglePlayback();
+      } else if (event.code === "ArrowLeft") {
+        event.preventDefault();
+        setIsPlaying(false);
+        seekTo(currentTime - 1 / project.settings.fps);
+      } else if (event.code === "ArrowRight") {
+        event.preventDefault();
+        setIsPlaying(false);
+        seekTo(currentTime + 1 / project.settings.fps);
+      } else if (event.key.toLowerCase() === "home") {
+        event.preventDefault();
+        setIsPlaying(false);
+        seekTo(0);
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  });
 
   const updateProject = (mutator: (current: Project) => Project) => {
     setPast((items) => [...items.slice(-39), project]);
@@ -406,22 +576,64 @@ export default function App() {
 
       <main className="editor-main">
         <section className="preview-section">
-          <div className="section-toolbar"><div className="section-toolbar-title"><Monitor size={15} /><span>PREVIEW</span><span className="toolbar-muted">· {project.settings.width} × {project.settings.height}</span></div><div className="preview-toolbar-actions"><span className="preview-fit">Fit <ChevronDown size={13} /></span><span className="preview-timecode">{formatTime(selectedClip?.start ?? 0)} <span>/</span> {formatTime(totalDuration)}</span></div></div>
-          <div className="preview-stage"><div className="preview-monitor"><Preview asset={selectedAsset} clip={selectedClip} project={project} /></div></div>
-          <div className="preview-bottom"><div className="preview-file"><span className="file-dot" />{selectedAsset ? selectedAsset.name : "No media selected"}</div><div className="preview-controls"><button className="mini-control" title="Trim selected clip" onClick={() => notify("Set exact trim points in the Inspector.")}><Scissors size={14} /></button><span className="control-divider" /><span>{selectedClip ? formatTime(clipDuration(selectedClip)) : "00:00"}</span><span className="control-muted">clip duration</span></div></div>
+          <div className="section-toolbar">
+            <div className="section-toolbar-title"><Monitor size={15} /><span>PROGRAM MONITOR</span><span className="toolbar-muted">· {project.settings.width} × {project.settings.height}</span></div>
+            <div className="preview-toolbar-actions">
+              <span className="monitor-mode"><span className="live-indicator" /> TIMELINE PREVIEW</span>
+              <span className="preview-timecode">{formatTimecode(currentTime, project.settings.fps)}</span>
+            </div>
+          </div>
+          <div className="preview-stage">
+            <div className="preview-monitor" ref={previewMonitorRef}>
+              <Preview asset={activePreviewAsset} clip={activePreviewClip} project={project} timelineTime={currentTime} videoRef={previewVideoRef} onTimeUpdate={handleVideoTimeUpdate} onLoadedMetadata={handleVideoLoadedMetadata} onEnded={handleVideoEnded} />
+              {activePreviewAsset?.kind === "video" && !isPlaying && <button className="monitor-play-overlay" aria-label="Play preview" onClick={togglePlayback}><Play size={23} fill="currentColor" /></button>}
+              {activePreviewAsset && <div className="monitor-overlay-top"><span>{activePreviewAsset.name}</span><span>{activePreviewAsset.kind === "image" ? "STILL" : activePreviewAsset.kind.toUpperCase()}</span></div>}
+            </div>
+          </div>
+          <div className="preview-scrub-row">
+            <span className="scrub-current">{formatTimecode(currentTime, project.settings.fps)}</span>
+            <input aria-label="Seek preview" className="preview-scrubber" type="range" min="0" max={Math.max(previewDuration, 0.1)} step={1 / project.settings.fps} value={Math.min(currentTime, Math.max(previewDuration, 0.1))} onChange={(event) => seekTo(Number(event.target.value))} />
+            <span className="scrub-total">{formatTimecode(previewDuration, project.settings.fps)}</span>
+          </div>
+          <div className="preview-bottom">
+            <div className="preview-file"><span className="file-dot" />{activePreviewAsset ? activePreviewAsset.name : "No clip under playhead"}</div>
+            <div className="transport-controls">
+              <button className="transport-button" title="Go to start (Home)" onClick={() => { setIsPlaying(false); seekTo(0); }}><SkipBack size={16} /></button>
+              <button className="transport-button" title="Previous frame (←)" onClick={() => { setIsPlaying(false); seekTo(currentTime - 1 / project.settings.fps); }}><Scissors size={14} /></button>
+              <button className="transport-play" title={isPlaying ? "Pause (Space)" : "Play (Space)"} onClick={togglePlayback}>{isPlaying ? <Pause size={17} fill="currentColor" /> : <Play size={17} fill="currentColor" />}</button>
+              <button className="transport-button" title="Next frame (→)" onClick={() => { setIsPlaying(false); seekTo(currentTime + 1 / project.settings.fps); }}><SkipForward size={16} /></button>
+              <select aria-label="Playback speed" className="playback-speed" value={playbackRate} onChange={(event) => setPlaybackRate(Number(event.target.value))}><option value={0.25}>0.25×</option><option value={0.5}>0.5×</option><option value={1}>1×</option><option value={1.5}>1.5×</option><option value={2}>2×</option></select>
+            </div>
+            <div className="monitor-right-controls">
+              <Volume2 size={15} />
+              <input aria-label="Preview volume" type="range" className="preview-volume" min="0" max="1" step="0.05" value={previewVolume} onChange={(event) => setPreviewVolume(Number(event.target.value))} />
+              <span className="transport-time">{formatTime(currentTime)}<i>/</i>{formatTime(previewDuration)}</span>
+              <button className="transport-button" title="Full screen preview" onClick={() => { const monitor = previewMonitorRef.current; if (monitor?.requestFullscreen) void monitor.requestFullscreen().catch(() => undefined); }}><Maximize2 size={15} /></button>
+            </div>
+          </div>
         </section>
         <section className="timeline-section">
-          <div className="timeline-header"><div><div className="timeline-title"><Layers3 size={16} /><h3>Timeline</h3><span className="clip-count">{project.clips.length} clips</span></div><p>Arrange your story, layer sound, and fine-tune each shot.</p></div><div className="timeline-tools"><button className="icon-button" title="Import media" onClick={importMedia}><Upload size={15} /></button><button className="button button-quiet button-small" onClick={saveProjectFile}><Save size={14} /> Save project</button></div></div>
-          <div className="timeline-scroll"><div className="timeline-board" style={{ width: timelineWidth + 72 }}>
-            <div className="timeline-ruler"><div className="track-label ruler-label"><Clock3 size={13} /> TIME</div><div className="ruler-content" style={{ width: timelineWidth }}>{Array.from({ length: Math.ceil(timelineEnd / 5) + 1 }, (_, index) => index * 5).map((seconds) => <div className="ruler-tick" key={seconds} style={{ left: seconds * pxPerSecond }}><span>{formatTime(seconds)}</span><i /></div>)}</div></div>
+          <div className="timeline-header">
+            <div><div className="timeline-title"><Layers3 size={16} /><h3>Timeline</h3><span className="clip-count">{project.clips.length} clips</span><span className="timeline-playback-state">{isPlaying ? "PLAYING" : "READY"}</span></div><p>Click the ruler to seek · drag the playhead · Space to play/pause</p></div>
+            <div className="timeline-tools">
+              <button className="icon-button" title="Zoom out" disabled={timelineZoom <= 38} onClick={() => setTimelineZoom((value) => Math.max(38, value - 12))}><ZoomOut size={15} /></button>
+              <span className="zoom-label">{Math.round(timelineZoom / 86 * 100)}%</span>
+              <button className="icon-button" title="Zoom in" disabled={timelineZoom >= 170} onClick={() => setTimelineZoom((value) => Math.min(170, value + 12))}><ZoomIn size={15} /></button>
+              <button className="icon-button" title="Import media" onClick={importMedia}><Upload size={15} /></button>
+              <button className="button button-quiet button-small" onClick={saveProjectFile}><Save size={14} /> Save project</button>
+            </div>
+          </div>
+          <div className="timeline-scroll"><div ref={timelineBoardRef} className="timeline-board" style={{ width: timelineWidth + 72 }} onPointerMove={(event) => { if (isScrubbing) scrubToClientX(event.clientX); }} onPointerUp={() => setIsScrubbing(false)} onPointerCancel={() => setIsScrubbing(false)}>
+            <div className="timeline-ruler"><div className="track-label ruler-label"><Clock3 size={13} /> TIME</div><div className="ruler-content" style={{ width: timelineWidth }} onClick={(event) => seekFromElement(event.clientX, event.currentTarget)}>{Array.from({ length: Math.ceil(timelineEnd / 5) + 1 }, (_, index) => index * 5).map((seconds) => <div className="ruler-tick" key={seconds} style={{ left: seconds * pxPerSecond }}><span>{formatTime(seconds)}</span><i /></div>)}</div></div>
+            <button className="timeline-playhead" style={{ left: 72 + currentTime * pxPerSecond }} title="Drag to scrub the timeline" onPointerDown={beginScrubbing} aria-label="Timeline playhead"><span className="playhead-head" /><span className="playhead-line" /></button>
             {TRACKS.map((track) => {
               const trackClips = project.clips.filter((clip) => clip.track === track.id);
-              return <div className={"timeline-track track-" + track.id.toLowerCase()} key={track.id}><div className="track-label"><strong>{track.id}</strong><span>{track.label}</span><small>{track.hint}</small></div><div className="track-canvas" style={{ width: timelineWidth }} onClick={() => setSelectedClipId(undefined)}>
+              return <div className={"timeline-track track-" + track.id.toLowerCase()} key={track.id}><div className="track-label"><strong>{track.id}</strong><span>{track.label}</span><small>{track.hint}</small></div><div className="track-canvas" style={{ width: timelineWidth }} onClick={(event) => { seekFromElement(event.clientX, event.currentTarget); if (event.target === event.currentTarget) setSelectedClipId(undefined); }}>
                 {Array.from({ length: Math.ceil(timelineEnd / 5) + 1 }, (_, index) => index * 5).map((seconds) => <i className="track-gridline" key={seconds} style={{ left: seconds * pxPerSecond }} />)}
                 {trackClips.map((clip) => {
                   const asset = project.media.find((media) => media.id === clip.mediaId);
                   const duration = clipDuration(clip);
-                  return <button key={clip.id} className={"timeline-clip " + clip.track.toLowerCase() + "-clip " + (selectedClipId === clip.id ? "selected" : "")} style={{ left: clip.start * pxPerSecond, width: Math.max(74, duration * pxPerSecond - 4) }} onClick={(event) => { event.stopPropagation(); setSelectedClipId(clip.id); setSelectedMediaId(clip.mediaId); }}>
+                  return <button key={clip.id} className={"timeline-clip " + clip.track.toLowerCase() + "-clip " + (selectedClipId === clip.id ? "selected" : "")} style={{ left: clip.start * pxPerSecond, width: Math.max(74, duration * pxPerSecond - 4) }} onClick={(event) => { event.stopPropagation(); setSelectedClipId(clip.id); setSelectedMediaId(clip.mediaId); seekTo(clip.start); }}>
                     <span className="clip-edge left-edge" /><span className="clip-art">{clip.track === "V1" ? <Film size={13} /> : <Waves size={13} />}</span><span className="clip-text"><strong>{asset?.name ?? "Missing media"}</strong><small>{formatTime(duration)}{clip.effects.length ? " · " + clip.effects.length + " FX" : ""}</small></span>
                     {clip.track === "V1" && clip.transitionBefore !== "cut" && <span className="clip-transition" title={clip.transitionBefore}><ArrowLeftRight size={11} /></span>}
                     {clip.track !== "V1" && <span className="waveform-decoration">{Array.from({ length: 30 }, (_, i) => <i key={i} style={{ height: (4 + ((i * 17 + clip.id.length * 7) % 21)) + "px" }} />)}</span>}
@@ -433,7 +645,7 @@ export default function App() {
             })}
             {project.titles.length > 0 && <div className="title-lane"><div className="track-label"><strong>T</strong><span>Titles</span></div><div className="title-lane-canvas" style={{ width: timelineWidth }}>{project.titles.map((title) => <button key={title.id} className="title-timeline-clip" style={{ left: title.start * pxPerSecond, width: Math.max(90, (title.end - title.start) * pxPerSecond) }} onClick={() => setActiveTool("titles")}><Type size={12} />{title.text}</button>)}</div></div>}
           </div></div>
-          <div className="timeline-footer"><div><span className="timeline-legend video-legend" /> Video <span className="timeline-legend audio-legend" /> Audio <span className="timeline-legend title-legend" /> Titles</div><span>{formatTime(totalDuration)} total video duration <span className="status-separator">·</span> {project.clips.filter((clip) => clip.track === "A1" || clip.track === "A2").length} audio clips</span></div>
+          <div className="timeline-footer"><div><span className="timeline-legend video-legend" /> Video <span className="timeline-legend audio-legend" /> Audio <span className="timeline-legend title-legend" /> Titles</div><span>{formatTimecode(currentTime, project.settings.fps)} <span className="status-separator">·</span> {formatTime(totalDuration)} total video <span className="status-separator">·</span> {project.clips.filter((clip) => clip.track === "A1" || clip.track === "A2").length} audio clips</span></div>
         </section>
       </main>
 
