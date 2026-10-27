@@ -538,9 +538,9 @@ export default function App() {
       } else if (event.key.toLowerCase() === "c" && !event.ctrlKey && !event.metaKey) {
         event.preventDefault();
         setActiveEditTool((tool) => tool === "razor" ? "select" : "razor");
-      } else if ((event.key === "Delete" || event.key === "Backspace") && (selectedClipIds.length || selectedClipId)) {
+      } else if ((event.key === "Delete" || event.key === "Backspace") && selectedClipId) {
         event.preventDefault();
-        if (event.shiftKey) rippleDeleteSelectedClips(); else removeSelectedTimelineItems();
+        removeClip(selectedClipId);
       } else if (event.key.toLowerCase() === "v" && !event.ctrlKey && !event.metaKey) {
         setActiveEditTool("select");
       } else if (event.code === "Space") {
