@@ -125,3 +125,10 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
  .preview-bottom{gap:5px}.transport-controls{gap:1px}.transport-button{width:27px}
  .monitor-mode{display:none}.monitor-right-controls>svg{display:none}
 }
+
+.hidden-audio-deck{display:none!important}
+.media-card[draggable="true"]{cursor:grab}
+.media-card[draggable="true"]:active{cursor:grabbing}
+.timeline-clip[draggable="true"]{cursor:grab}
+.timeline-clip[draggable="true"]:active{cursor:grabbing}
+.track-canvas:has(.timeline-clip:hover){background-color:#141a28}
