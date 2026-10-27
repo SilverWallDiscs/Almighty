@@ -4,7 +4,8 @@ Almighty is a Rust-powered desktop video editor in active development. This repo
 
 ## Included in this first build
 
-- A dark editing workspace with media bin, preview monitor, video/audio timeline tracks, clip inspector, and project settings.
+- A dark editing workspace with a custom program monitor, media bin, synchronized video/audio timeline tracks, clip inspector, playback transport, frame stepping, speed control, volume, and fullscreen preview.
+- Timeline scrubbing with a draggable playhead, click-to-seek ruler, timeline zoom, drag-and-drop from the media bin, and clip drag-and-drop between tracks.
 - Import video, image, and audio files; inspect duration and stream metadata through FFprobe.
 - Assemble clips, trim in/out points, reorder clips, control audio volume and mute, and use undo/redo.
 - Export H.264 MP4 at 720p, Full HD, QHD, or 4K and common frame rates using FFmpeg.
