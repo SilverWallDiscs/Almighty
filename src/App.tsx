@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type RefObject, type SyntheticEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type DragEvent as ReactDragEvent, type PointerEvent as ReactPointerEvent, type RefObject, type SyntheticEvent } from "react";
 import {
   AlertTriangle, ArrowLeftRight, AudioLines, Check, ChevronDown, Clapperboard,
   Clock3, Download, ExternalLink, FileAudio, FileImage, FileVideo, Film, FolderOpen,
@@ -211,7 +211,7 @@ export default function App() {
     setIsPlaying((value) => !value);
   };
 
-  const handleVideoTimeUpdate = (event: React.SyntheticEvent<HTMLVideoElement>) => {
+  const handleVideoTimeUpdate = (event: SyntheticEvent<HTMLVideoElement>) => {
     const video = event.currentTarget;
     if (activePreviewClip) {
       const clipEnd = activePreviewClip.start + clipDuration(activePreviewClip);
@@ -227,7 +227,7 @@ export default function App() {
     }
   };
 
-  const handleVideoLoadedMetadata = (event: React.SyntheticEvent<HTMLVideoElement>) => {
+  const handleVideoLoadedMetadata = (event: SyntheticEvent<HTMLVideoElement>) => {
     const video = event.currentTarget;
     const target = activePreviewClip
       ? activePreviewClip.trimStart + Math.max(0, currentTime - activePreviewClip.start)
@@ -435,7 +435,7 @@ export default function App() {
     setSelectedClipId(undefined);
   };
 
-  const dropOnTrack = (event: React.DragEvent<HTMLDivElement>, track: TrackId) => {
+  const dropOnTrack = (event: ReactDragEvent<HTMLDivElement>, track: TrackId) => {
     event.preventDefault();
     const targetTime = Math.max(0, (event.clientX - event.currentTarget.getBoundingClientRect().left) / pxPerSecond);
     const movingClipId = event.dataTransfer.getData("application/x-almighty-clip");
