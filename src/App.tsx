@@ -620,9 +620,16 @@ export default function App() {
     });
     updateProject((current) => ({ ...current, clips: current.clips.map((item) => startMap.has(item.id) ? { ...item, start: startMap.get(item.id)! } : item) }));
   };
+  const applyEffectToClip = (clipId: string, effect: EffectId) => {
+    const target = project.clips.find((clip) => clip.id === clipId);
+    if (!target || target.track !== "V1") return notify("Drop effects onto a video clip in Video 1.");
+    updateClip(target.id, (clip) => ({ ...clip, effects: clip.effects.includes(effect) ? clip.effects.filter((item) => item !== effect) : [...clip.effects, effect] }));
+    setSelectedClipId(target.id);
+    setSelectedMediaId(target.mediaId);
+  };
   const applyEffect = (effect: EffectId) => {
     if (!selectedClip || selectedClip.track !== "V1") return notify("Select a video clip in the timeline first.");
-    updateClip(selectedClip.id, (clip) => ({ ...clip, effects: clip.effects.includes(effect) ? clip.effects.filter((item) => item !== effect) : [...clip.effects, effect] }));
+    applyEffectToClip(selectedClip.id, effect);
   };
   const addTitle = () => {
     const baseStart = selectedClip?.start ?? 0;
@@ -740,7 +747,7 @@ export default function App() {
 
         {activeTool === "effects" && <div className="panel-content">
           <div className="section-intro compact"><div className="intro-art effect-art"><Palette size={21} /></div><strong>Creative looks</strong><span>Stack effects on the selected video clip. Click an effect again to remove it.</span></div>
-          <div className="effect-list">{EFFECTS.map((effect) => { const applied = selectedClip?.effects.includes(effect.id) ?? false; return <button key={effect.id} className={"effect-card " + (applied ? "applied" : "")} onClick={() => applyEffect(effect.id)}><span className={"effect-swatch swatch-" + effect.swatch}><span /></span><span className="effect-copy"><strong>{effect.name}</strong><small>{effect.note}</small></span>{applied ? <span className="applied-check"><Check size={14} /></span> : <Plus size={15} className="effect-plus" />}</button>; })}</div>
+          <div className="effect-list">{EFFECTS.map((effect) => { const applied = selectedClip?.effects.includes(effect.id) ?? false; return <button key={effect.id} draggable onDragStart={(event) => { event.dataTransfer.setData("application/x-almighty-effect", effect.id); event.dataTransfer.effectAllowed = "copy"; }} className={"effect-card " + (applied ? "applied" : "")} onClick={() => applyEffect(effect.id)} title="Click to toggle, or drag directly onto a timeline clip"><span className={"effect-swatch swatch-" + effect.swatch}><span /></span><span className="effect-copy"><strong>{effect.name}</strong><small>{effect.note}</small></span>{applied ? <span className="applied-check"><Check size={14} /></span> : <Plus size={15} className="effect-plus" />}</button>; })}</div>
           {!selectedClip && <div className="inline-hint"><AlertTriangle size={14} /> Select a video clip in the timeline to apply looks.</div>}
         </div>}
 
@@ -839,7 +846,7 @@ export default function App() {
                 {trackClips.map((clip) => {
                   const asset = project.media.find((media) => media.id === clip.mediaId);
                   const duration = clipDuration(clip);
-                  return <button key={clip.id} draggable={activeEditTool !== "razor"} onDragStart={(event) => { event.dataTransfer.setData("application/x-almighty-clip", clip.id); event.dataTransfer.effectAllowed = "move"; }} className={"timeline-clip " + clip.track.toLowerCase() + "-clip " + (selectedClipId === clip.id ? "selected" : "")} style={{ left: clip.start * pxPerSecond, width: Math.max(74, duration * pxPerSecond - 4) }} onClick={(event) => { event.stopPropagation(); const clickTime = clip.start + Math.max(0, Math.min(duration, (event.clientX - event.currentTarget.getBoundingClientRect().left) / pxPerSecond)); if (activeEditTool === "razor") { setSelectedClipId(clip.id); splitClipAt(clickTime, clip.id); return; } setSelectedClipId(clip.id); setSelectedMediaId(clip.mediaId); seekTo(clip.start); }}>
+                  return <button key={clip.id} draggable={activeEditTool !== "razor"} onDragStart={(event) => { event.dataTransfer.setData("application/x-almighty-clip", clip.id); event.dataTransfer.effectAllowed = "move"; }} className={"timeline-clip " + clip.track.toLowerCase() + "-clip " + (selectedClipId === clip.id ? "selected" : "")} style={{ left: clip.start * pxPerSecond, width: Math.max(74, duration * pxPerSecond - 4) }} onDragOver={(event) => { if (event.dataTransfer.types.includes("application/x-almighty-effect")) { event.preventDefault(); event.dataTransfer.dropEffect = "copy"; } }} onDrop={(event) => { const effectId = event.dataTransfer.getData("application/x-almighty-effect") as EffectId; if (effectId) { event.preventDefault(); event.stopPropagation(); applyEffectToClip(clip.id, effectId); } }} onClick={(event) => { event.stopPropagation(); const clickTime = clip.start + Math.max(0, Math.min(duration, (event.clientX - event.currentTarget.getBoundingClientRect().left) / pxPerSecond)); if (activeEditTool === "razor") { setSelectedClipId(clip.id); splitClipAt(clickTime, clip.id); return; } setSelectedClipId(clip.id); setSelectedMediaId(clip.mediaId); seekTo(clip.start); }}>
                     <span className="clip-edge left-edge" /><span className="clip-art">{clip.track === "V1" ? <Film size={13} /> : <Waves size={13} />}</span><span className="clip-text"><strong>{asset?.name ?? "Missing media"}</strong><small>{formatTime(duration)}{clip.effects.length ? " · " + clip.effects.length + " FX" : ""}</small></span>
                     {clip.track === "V1" && clip.transitionBefore !== "cut" && <span className="clip-transition" title={clip.transitionBefore}><ArrowLeftRight size={11} /></span>}
                     {clip.track !== "V1" && <span className="waveform-decoration">{Array.from({ length: 30 }, (_, i) => <i key={i} style={{ height: (4 + ((i * 17 + clip.id.length * 7) % 21)) + "px" }} />)}</span>}
