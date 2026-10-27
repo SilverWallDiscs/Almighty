@@ -544,7 +544,7 @@ export default function App() {
       } else if ((event.key === "Delete" || event.key === "Backspace") && (selectedClipId || selectedClipIds.length)) {
         event.preventDefault();
         if (event.shiftKey) rippleRemoveSelection();
-        else if (selectedClipId) removeClip(selectedClipId);
+        else removeSelection();
       } else if (event.key.toLowerCase() === "v" && !event.ctrlKey && !event.metaKey) {
         setActiveEditTool("select");
       } else if (event.code === "Space") {
@@ -662,6 +662,16 @@ export default function App() {
     updateProject((current) => ({ ...current, clips: current.clips.filter((clip) => clip.id !== clipId) }));
     setSelectedClipId(undefined);
     setSelectedClipIds((ids) => ids.filter((id) => id !== clipId));
+  };
+
+  const removeSelection = () => {
+    const ids = selectedClipIds.length ? selectedClipIds : selectedClipId ? [selectedClipId] : [];
+    if (ids.length === 0) return;
+    const blocked = project.clips.find((clip) => ids.includes(clip.id) && trackSettingsFor(clip.track).locked);
+    if (blocked) return notify("Unlock " + blocked.track + " before deleting clips.");
+    updateProject((current) => ({ ...current, clips: current.clips.filter((clip) => !ids.includes(clip.id)) }));
+    setSelectedClipId(undefined);
+    setSelectedClipIds([]);
   };
 
   const rippleRemoveSelection = () => {
