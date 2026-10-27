@@ -792,7 +792,20 @@ export default function App() {
       if (incompatible) return notify("The selected clips are not compatible with " + track + ".");
       const primary = movingClips.find((clip) => clip.id === singleId) ?? movingClips[0];
       const grabOffset = Number(event.dataTransfer.getData("application/x-almighty-grab-offset") || 0);
-      const targetTime = snapTimelineTime(rawTime - grabOffset, movingIds);
+      let targetTime = snapTimelineTime(rawTime - grabOffset, movingIds);
+      if (track === "V1") {
+        const groupStart = Math.min(...movingClips.map((clip) => clip.start));
+        const groupEnd = Math.max(...movingClips.map((clip) => clip.start + clipDuration(clip)));
+        const groupSpan = Math.max(0.1, groupEnd - groupStart);
+        const requestedStart = targetTime + groupStart - primary.start;
+        const peers = project.clips.filter((clip) => clip.track === "V1" && !movingIds.includes(clip.id));
+        const freeAt = (start: number) => peers.every((peer) => start + groupSpan <= peer.start + 0.0001 || start >= peer.start + clipDuration(peer) - 0.0001);
+        const candidates = [requestedStart, 0, ...peers.flatMap((peer) => [peer.start - groupSpan, peer.start + clipDuration(peer)])]
+          .filter((candidate) => candidate >= 0 && freeAt(candidate))
+          .sort((a, b) => Math.abs(a - requestedStart) - Math.abs(b - requestedStart));
+        const placedStart = candidates[0] ?? Math.max(0, ...peers.map((peer) => peer.start + clipDuration(peer)));
+        targetTime = placedStart + primary.start - groupStart;
+      }
       const delta = targetTime - primary.start;
       updateProject((current) => ({
         ...current,
