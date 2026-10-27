@@ -1071,3 +1071,4 @@ export default function App() {
     {toast && <div className="toast"><span className="toast-icon"><Check size={15} /></span><span>{toast}</span><button onClick={() => setToast("")}><X size={14} /></button></div>}
   </div>;
 }
+// Desktop timeline behavior is being expanded in small verified steps.
