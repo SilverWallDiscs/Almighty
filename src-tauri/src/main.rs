@@ -227,7 +227,7 @@ fn export_video(project: Value, output_path: String) -> Result<String, String> {
     let mut audio_labels: Vec<String> = Vec::new();
     let mut audio_index = 0usize;
     for (clip, asset, input_index) in &video_inputs {
-        if !bool_value(asset, "hasAudio", false) || bool_value(clip, "muted", false) { continue; }
+        if !bool_value(asset, "hasAudio", false) || bool_value(clip, "muted", false) || track_option(&project, "V1", "muted") || track_option(&project, "V1", "hidden") { continue; }
         let trim_in = num(clip, "trimStart", 0.0).max(0.0);
         let duration = (num(clip, "trimEnd", num(asset, "duration", 1.0)) - trim_in).max(0.1);
         let volume = num(clip, "volume", 1.0).clamp(0.0, 2.0);
