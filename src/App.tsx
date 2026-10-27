@@ -618,12 +618,22 @@ export default function App() {
     if (track === "V1" && asset.kind === "audio") return notify("Audio-only files belong on Audio 1 or Audio 2.");
     if (track !== "V1" && asset.kind !== "audio" && !asset.hasAudio) return notify("This file has no audio stream to add to an audio track.");
     const sameTrack = project.clips.filter((clip) => clip.track === track);
-    const start = atTime === undefined ? sameTrack.reduce((end, clip) => Math.max(end, clip.start + clipDuration(clip)), 0) : snapTimelineTime(atTime);
-    const clip = makeClip(asset.id, track, start, asset.duration || 5);
-    const clips = [...project.clips, clip];
-    updateProject((current) => ({ ...current, clips }));
+    let start = atTime === undefined ? sameTrack.reduce((end, clip) => Math.max(end, clip.start + clipDuration(clip)), 0) : snapTimelineTime(atTime);
+    const duration = asset.duration || 5;
+    if (track === "V1" && atTime !== undefined) {
+      const coveredClip = sameTrack.find((clip) => start > clip.start + 0.03 && start < clip.start + clipDuration(clip) - 0.03);
+      if (coveredClip) start = coveredClip.start;
+    }
+    const clip = makeClip(asset.id, track, start, duration);
+    updateProject((current) => {
+      const shifted = current.clips.map((item) => track === "V1" && atTime !== undefined && item.track === "V1" && item.start >= start - 0.0001
+        ? { ...item, start: item.start + duration }
+        : item);
+      return { ...current, clips: [...shifted, clip] };
+    });
     setSelectedClipId(clip.id); setSelectedClipIds([clip.id]); setSelectedMediaId(asset.id);
-    notify("Added " + asset.name + " to " + track + ".");
+    seekTo(start);
+    notify("Inserted " + asset.name + " on " + track + ".");
   };
   const addSoundToTimeline = async (effectId: string) => {
     if (!isTauri()) return notify("Sound generation is available in the desktop app.");
