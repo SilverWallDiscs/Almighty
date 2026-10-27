@@ -1029,12 +1029,44 @@ export default function App() {
                 {Array.from({ length: Math.ceil(timelineEnd / 5) + 1 }, (_, index) => index * 5).map((seconds) => <i className="track-gridline" key={seconds} style={{ left: seconds * pxPerSecond }} />)}
                 {trackClips.map((clip) => {
                   const asset = project.media.find((media) => media.id === clip.mediaId);
-                  const duration = clipDuration(clip);
-                  return <button key={clip.id} draggable={activeEditTool !== "razor"} onDragStart={(event) => { event.dataTransfer.setData("application/x-almighty-clip", clip.id); event.dataTransfer.effectAllowed = "move"; }} className={"timeline-clip " + clip.track.toLowerCase() + "-clip " + (selectedClipId === clip.id ? "selected" : "")} style={{ left: clip.start * pxPerSecond, width: Math.max(74, duration * pxPerSecond - 4) }} onDragOver={(event) => { if (event.dataTransfer.types.includes("application/x-almighty-effect")) { event.preventDefault(); event.dataTransfer.dropEffect = "copy"; } }} onDrop={(event) => { const effectId = event.dataTransfer.getData("application/x-almighty-effect") as EffectId; if (effectId) { event.preventDefault(); event.stopPropagation(); applyEffectToClip(clip.id, effectId); } }} onClick={(event) => { event.stopPropagation(); const clickTime = clip.start + Math.max(0, Math.min(duration, (event.clientX - event.currentTarget.getBoundingClientRect().left) / pxPerSecond)); if (activeEditTool === "razor") { setSelectedClipId(clip.id); splitClipAt(clickTime, clip.id); return; } setSelectedClipId(clip.id); setSelectedMediaId(clip.mediaId); seekTo(clip.start); }}>
-                    <span className="clip-edge left-edge" /><span className="clip-art">{clip.track === "V1" ? <Film size={13} /> : <Waves size={13} />}</span><span className="clip-text"><strong>{asset?.name ?? "Missing media"}</strong><small>{formatTime(duration)}{clip.effects.length ? " · " + clip.effects.length + " FX" : ""}</small></span>
-                    {clip.track === "V1" && clip.transitionBefore !== "cut" && <span className="clip-transition" title={clip.transitionBefore}><ArrowLeftRight size={11} /></span>}
+                  const displayClip = trimPreview?.clipId === clip.id
+                    ? { ...clip, start: trimPreview.start, trimStart: trimPreview.trimStart, trimEnd: trimPreview.trimEnd }
+                    : clip;
+                  const duration = clipDuration(displayClip);
+                  const trackLocked = trackSettingsFor(clip.track).locked;
+                  const clipSelected = selectedClipId === clip.id || selectedClipIds.includes(clip.id);
+                  return <button key={clip.id} draggable={activeEditTool !== "razor" && !trackLocked}
+                    onDragStart={(event) => {
+                      const ids = selectedClipIds.includes(clip.id) ? selectedClipIds : [clip.id];
+                      event.dataTransfer.setData("application/x-almighty-clip", clip.id);
+                      event.dataTransfer.setData("application/x-almighty-clips", JSON.stringify(ids));
+                      event.dataTransfer.setData("application/x-almighty-grab-offset", String((event.clientX - event.currentTarget.getBoundingClientRect().left) / pxPerSecond));
+                      event.dataTransfer.effectAllowed = "move";
+                    }}
+                    className={"timeline-clip " + clip.track.toLowerCase() + "-clip " + (clipSelected ? "selected" : "") + (trackLocked ? " locked" : "")}
+                    style={{ left: displayClip.start * pxPerSecond, width: Math.max(74, duration * pxPerSecond - 4) }}
+                    onDragOver={(event) => { if (event.dataTransfer.types.includes("application/x-almighty-effect")) { event.preventDefault(); event.dataTransfer.dropEffect = "copy"; } }}
+                    onDrop={(event) => { const effectId = event.dataTransfer.getData("application/x-almighty-effect") as EffectId; if (effectId) { event.preventDefault(); event.stopPropagation(); applyEffectToClip(clip.id, effectId); } }}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      const clickTime = displayClip.start + Math.max(0, Math.min(duration, (event.clientX - event.currentTarget.getBoundingClientRect().left) / pxPerSecond));
+                      if (activeEditTool === "razor") { setSelectedClipId(clip.id); setSelectedClipIds([clip.id]); splitClipAt(clickTime, clip.id); return; }
+                      setSelectedClipId(clip.id); setSelectedMediaId(clip.mediaId);
+                      if (event.ctrlKey || event.metaKey) setSelectedClipIds((ids) => ids.includes(clip.id) ? ids.filter((id) => id !== clip.id) : [...ids, clip.id]);
+                      else if (event.shiftKey) {
+                        const sorted = trackClips.slice().sort((a, b) => a.start - b.start);
+                        const anchor = sorted.findIndex((item) => item.id === selectedClipId);
+                        const target = sorted.findIndex((item) => item.id === clip.id);
+                        setSelectedClipIds(sorted.slice(Math.min(anchor < 0 ? target : anchor, target), Math.max(anchor < 0 ? target : anchor, target) + 1).map((item) => item.id));
+                      } else setSelectedClipIds([clip.id]);
+                      seekTo(snapTimelineTime(clickTime, [clip.id]));
+                    }}>
+                    <span className="clip-edge left-edge trim-handle" title="Drag to trim clip start" onPointerDown={(event) => beginTrimDrag(event, clip, "left")} />
+                    <span className="clip-art">{clip.track === "V1" ? <Film size={13} /> : <Waves size={13} />}</span>
+                    <span className="clip-text"><strong>{asset?.name ?? "Missing media"}</strong><small>{formatTime(duration)}{clip.effects.length ? " · " + clip.effects.length + " FX" : ""}</small></span>
+                    {clip.track === "V1" && clip.transitionBefore !== "cut" && <span className="clip-transition" title={clip.transitionBefore + " · " + (clip.transitionDuration ?? 0.45).toFixed(2) + " s"}><ArrowLeftRight size={11} /></span>}
                     {clip.track !== "V1" && <span className="waveform-decoration">{Array.from({ length: 30 }, (_, i) => <i key={i} style={{ height: (4 + ((i * 17 + clip.id.length * 7) % 21)) + "px" }} />)}</span>}
-                    <span className="clip-edge right-edge" />
+                    <span className="clip-edge right-edge trim-handle" title="Drag to trim clip end" onPointerDown={(event) => beginTrimDrag(event, clip, "right")} />
                   </button>;
                 })}
                 {track.id === "V1" && trackClips.slice().sort((a, b) => a.start - b.start).slice(1).map((clip) => <button key={"transition-" + clip.id} className={"transition-drop-zone " + (clip.transitionBefore !== "cut" ? "has-transition" : "")} style={{ left: clip.start * pxPerSecond - 13 }} title={clip.transitionBefore === "cut" ? "Drop a transition here" : "Transition: " + clip.transitionBefore + " · drop another to replace"} aria-label={"Transition at cut before " + (project.media.find((item) => item.id === clip.mediaId)?.name ?? "clip")} onClick={(event) => { event.stopPropagation(); setSelectedClipId(clip.id); setSelectedMediaId(clip.mediaId); setActiveTool("transitions"); seekTo(clip.start); }} onDragOver={(event) => { event.preventDefault(); event.stopPropagation(); event.dataTransfer.dropEffect = "copy"; }} onDrop={(event) => { event.preventDefault(); event.stopPropagation(); const transitionId = event.dataTransfer.getData("application/x-almighty-transition") as TransitionId; if (transitionId) applyTransitionBefore(clip.id, transitionId); }}><ArrowLeftRight size={11} /></button>)}
