@@ -3,7 +3,7 @@ import {
   AlertTriangle, ArrowLeftRight, AudioLines, Check, ChevronDown, Clapperboard,
   Clock3, Download, ExternalLink, FileAudio, FileImage, FileVideo, Film, FolderOpen,
   HardDrive, Layers3, Loader2, Music2, Palette, Pause, Play, Plus, RefreshCw, Redo2, Save,
-  MousePointer2, Scissors, Search, Settings2, SlidersHorizontal, SkipBack, SkipForward, Sparkles,
+  MousePointer2, Scissors, Search, Settings2, SlidersHorizontal, SkipBack, SkipForward, Sparkles, Eye, EyeOff, Lock, Unlock, Magnet, VolumeX,
   Trash2, Type, Undo2, Upload, Volume2, Wand2, Waves, X, Zap, Monitor, Maximize2, ZoomIn, ZoomOut
 } from "lucide-react";
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
@@ -192,6 +192,7 @@ export default function App() {
   const [future, setFuture] = useState<Project[]>([]);
   const [activeTool, setActiveTool] = useState<ToolId>("media");
   const [selectedClipId, setSelectedClipId] = useState<string>();
+  const [selectedClipIds, setSelectedClipIds] = useState<string[]>([]);
   const [selectedMediaId, setSelectedMediaId] = useState<string>();
   const [search, setSearch] = useState("");
   const [titleDraft, setTitleDraft] = useState("Your title");
@@ -209,12 +210,23 @@ export default function App() {
   const [isScrubbing, setIsScrubbing] = useState(false);
   const [timelineZoom, setTimelineZoom] = useState(86);
   const [activeEditTool, setActiveEditTool] = useState<EditTool>("select");
+  const [snapEnabled, setSnapEnabled] = useState(true);
+  const [trimPreview, setTrimPreview] = useState<{ clipId: string; start: number; trimStart: number; trimEnd: number } | null>(null);
+  const trimDragRef = useRef<{ clipId: string; edge: "left" | "right"; originX: number; originalStart: number; originalTrimStart: number; originalTrimEnd: number; maxDuration: number } | null>(null);
+  const [timelinePercent, setTimelinePercent] = useState(41);
+  const [isResizingTimeline, setIsResizingTimeline] = useState(false);
+  const editorMainRef = useRef<HTMLElement | null>(null);
   const previewVideoRef = useRef<HTMLVideoElement | null>(null);
   const transitionVideoRef = useRef<HTMLVideoElement | null>(null);
   const audioTimelineRefs = useRef<Map<string, HTMLAudioElement>>(new Map());
   const timelineBoardRef = useRef<HTMLDivElement | null>(null);
   const previewMonitorRef = useRef<HTMLDivElement | null>(null);
 
+  const trackSettingsFor = (track: TrackId): TrackSettings => ({
+    locked: project.trackSettings?.[track]?.locked ?? false,
+    hidden: project.trackSettings?.[track]?.hidden ?? false,
+    muted: project.trackSettings?.[track]?.muted ?? false
+  });
   const selectedClip = project.clips.find((clip) => clip.id === selectedClipId);
   const selectedAsset = project.media.find((media) => media.id === (selectedClip?.mediaId ?? selectedMediaId));
   const timelineEnd = timelineDuration(project);
@@ -225,8 +237,8 @@ export default function App() {
   const videoTimelineClips = project.clips.filter((clip) => clip.track === "V1").slice().sort((a, b) => a.start - b.start);
   const transitionPreview = videoTimelineClips.slice(1).map((toClip, index): PreviewTransition | undefined => {
     const fromClip = videoTimelineClips[index];
-    const blendDuration = 0.45;
-    if (toClip.transitionBefore === "cut" || currentTime < toClip.start || currentTime >= toClip.start + blendDuration) return undefined;
+    const blendDuration = Math.max(0.1, toClip.transitionDuration ?? 0.45);
+    if (trackSettingsFor("V1").hidden || toClip.transitionBefore === "cut" || currentTime < toClip.start || currentTime >= toClip.start + blendDuration) return undefined;
     const fromAsset = project.media.find((media) => media.id === fromClip.mediaId);
     const toAsset = project.media.find((media) => media.id === toClip.mediaId);
     if (!fromAsset || !toAsset) return undefined;
@@ -234,7 +246,7 @@ export default function App() {
   }).find((item): item is PreviewTransition => Boolean(item));
   const normalPreviewClip = videoTimelineClips.find((clip) => currentTime >= clip.start - 0.0001 && currentTime < clip.start + clipDuration(clip) - 0.0001);
   const activePreviewClip = transitionPreview?.toClip ?? normalPreviewClip;
-  const activePreviewAsset = activePreviewClip
+  const activePreviewAsset = trackSettingsFor("V1").hidden ? undefined : activePreviewClip
     ? project.media.find((media) => media.id === activePreviewClip.mediaId)
     : videoTimelineClips.length === 0 ? selectedAsset : undefined;
   const previewDuration = Math.max(totalDuration, videoTimelineClips.length === 0 ? (selectedAsset?.duration ?? 0) : 0, 0.1);
@@ -244,6 +256,106 @@ export default function App() {
     setToast(message);
     window.setTimeout(() => setToast(""), 4200);
   }, []);
+
+  const snapTimelineTime = (rawTime: number, ignoreClipIds: string[] = []) => {
+    const frame = 1 / project.settings.fps;
+    const safeTime = Math.max(0, Math.round(rawTime / frame) * frame);
+    if (!snapEnabled) return safeTime;
+    const ignored = new Set(ignoreClipIds);
+    const candidates = [0, currentTime, ...project.clips.filter((clip) => !ignored.has(clip.id)).flatMap((clip) => [clip.start, clip.start + clipDuration(clip)])];
+    const threshold = Math.max(0.045, 8 / pxPerSecond);
+    let nearest = safeTime;
+    let distance = threshold;
+    for (const candidate of candidates) {
+      const delta = Math.abs(candidate - safeTime);
+      if (delta < distance) { nearest = candidate; distance = delta; }
+    }
+    return Math.max(0, Math.round(nearest / frame) * frame);
+  };
+
+  const updateTrackSetting = (track: TrackId, key: keyof TrackSettings, value: boolean) => {
+    updateProject((current) => ({
+      ...current,
+      trackSettings: {
+        ...current.trackSettings,
+        [track]: {
+          locked: current.trackSettings?.[track]?.locked ?? false,
+          hidden: current.trackSettings?.[track]?.hidden ?? false,
+          muted: current.trackSettings?.[track]?.muted ?? false,
+          [key]: value
+        }
+      }
+    }));
+  };
+
+  const beginTrimDrag = (event: ReactPointerEvent<HTMLSpanElement>, clip: TimelineClip, edge: "left" | "right") => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (trackSettingsFor(clip.track).locked) return notify("This track is locked.");
+    const asset = project.media.find((media) => media.id === clip.mediaId);
+    trimDragRef.current = {
+      clipId: clip.id, edge, originX: event.clientX, originalStart: clip.start,
+      originalTrimStart: clip.trimStart, originalTrimEnd: clip.trimEnd,
+      maxDuration: Math.max(clip.trimEnd, asset?.duration ?? clip.trimEnd)
+    };
+    setTrimPreview({ clipId: clip.id, start: clip.start, trimStart: clip.trimStart, trimEnd: clip.trimEnd });
+    setSelectedClipId(clip.id);
+    setSelectedClipIds([clip.id]);
+    setIsPlaying(false);
+    try { event.currentTarget.setPointerCapture(event.pointerId); } catch { /* Pointer capture is browser-dependent. */ }
+  };
+
+  const beginTimelineResize = (event: ReactPointerEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    setIsResizingTimeline(true);
+    try { event.currentTarget.setPointerCapture(event.pointerId); } catch { /* Pointer capture is optional. */ }
+  };
+
+  const handleEditorPointerMove = (event: ReactPointerEvent<HTMLElement>) => {
+    if (isResizingTimeline && editorMainRef.current) {
+      const bounds = editorMainRef.current.getBoundingClientRect();
+      const percentage = ((bounds.bottom - event.clientY) / Math.max(1, bounds.height)) * 100;
+      setTimelinePercent(Math.max(28, Math.min(64, percentage)));
+    }
+  };
+
+  const handleTimelinePointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (isScrubbing) scrubToClientX(event.clientX);
+    const drag = trimDragRef.current;
+    if (!drag) return;
+    const frame = 1 / project.settings.fps;
+    const delta = Math.round(((event.clientX - drag.originX) / pxPerSecond) / frame) * frame;
+    if (drag.edge === "left") {
+      const trimStart = Math.max(0, Math.min(drag.originalTrimEnd - 0.1, drag.originalTrimStart + delta));
+      const start = Math.max(0, drag.originalStart + (trimStart - drag.originalTrimStart));
+      setTrimPreview({ clipId: drag.clipId, start, trimStart, trimEnd: drag.originalTrimEnd });
+    } else {
+      const trimEnd = Math.max(drag.originalTrimStart + 0.1, Math.min(drag.maxDuration, drag.originalTrimEnd + delta));
+      setTrimPreview({ clipId: drag.clipId, start: drag.originalStart, trimStart: drag.originalTrimStart, trimEnd });
+    }
+  };
+
+  const finishTimelinePointer = () => {
+    const preview = trimPreview;
+    const drag = trimDragRef.current;
+    if (preview && drag) {
+      updateClip(drag.clipId, (clip) => ({ ...clip, start: preview.start, trimStart: preview.trimStart, trimEnd: preview.trimEnd }));
+    }
+    trimDragRef.current = null;
+    setTrimPreview(null);
+    setIsScrubbing(false);
+  };
+
+  const seekToCut = (direction: -1 | 1) => {
+    const cuts = videoTimelineClips.map((clip) => clip.start).sort((a, b) => a - b);
+    const frame = 1 / project.settings.fps;
+    const target = direction > 0
+      ? cuts.find((time) => time > currentTime + frame * 0.5)
+      : cuts.filter((time) => time < currentTime - frame * 0.5).at(-1);
+    if (target === undefined) return notify(direction > 0 ? "No later cut." : "No earlier cut.");
+    setIsPlaying(false);
+    seekTo(target);
+  };
 
   useEffect(() => {
     try {
@@ -347,13 +459,14 @@ export default function App() {
       ? activePreviewClip.trimStart + Math.max(0, currentTime - activePreviewClip.start)
       : currentTime;
     video.volume = previewVolume;
+    video.muted = trackSettingsFor("V1").muted;
     video.playbackRate = playbackRate;
     if (video.readyState >= 1 && (Math.abs(video.currentTime - sourceTime) > 0.6 || seekRequest > 0)) {
       try { video.currentTime = Math.max(0, sourceTime); } catch { /* Wait for media metadata. */ }
     }
     if (isPlaying) void video.play().catch(() => setIsPlaying(false));
     else video.pause();
-  }, [activePreviewAsset?.path, activePreviewAsset?.kind, activePreviewClip?.id, transitionPreview?.fromClip.id, transitionPreview?.toClip.id, isPlaying, playbackRate, previewVolume, seekRequest]);
+  }, [activePreviewAsset?.path, activePreviewAsset?.kind, activePreviewClip?.id, transitionPreview?.fromClip.id, transitionPreview?.toClip.id, isPlaying, playbackRate, previewVolume, seekRequest, project.trackSettings]);
 
   useEffect(() => {
     const video = transitionVideoRef.current;
@@ -375,7 +488,8 @@ export default function App() {
       const asset = project.media.find((media) => media.id === clip.mediaId);
       if (!player || !asset) continue;
       const clipEnd = clip.start + clipDuration(clip);
-      const insideClip = currentTime >= clip.start && currentTime < clipEnd && !clip.muted && (asset.kind === "audio" || asset.hasAudio === true);
+      const trackSettings = trackSettingsFor(clip.track);
+      const insideClip = currentTime >= clip.start && currentTime < clipEnd && !clip.muted && !trackSettings.hidden && !trackSettings.muted && (asset.kind === "audio" || asset.hasAudio === true);
       player.volume = Math.max(0, Math.min(1, clip.volume * previewVolume));
       player.playbackRate = playbackRate;
       if (!isPlaying || !insideClip) {
@@ -388,7 +502,7 @@ export default function App() {
       }
       if (player.paused) void player.play().catch(() => undefined);
     }
-  }, [project.clips, project.media, currentTime, isPlaying, playbackRate, previewVolume, seekRequest]);
+  }, [project.clips, project.media, project.trackSettings, currentTime, isPlaying, playbackRate, previewVolume, seekRequest]);
 
   useEffect(() => {
     if (!isPlaying || activePreviewAsset?.kind === "video") return;
@@ -424,9 +538,9 @@ export default function App() {
       } else if (event.key.toLowerCase() === "c" && !event.ctrlKey && !event.metaKey) {
         event.preventDefault();
         setActiveEditTool((tool) => tool === "razor" ? "select" : "razor");
-      } else if ((event.key === "Delete" || event.key === "Backspace") && selectedClipId) {
+      } else if ((event.key === "Delete" || event.key === "Backspace") && (selectedClipIds.length || selectedClipId)) {
         event.preventDefault();
-        removeClip(selectedClipId);
+        if (event.shiftKey) rippleDeleteSelectedClips(); else deleteSelectedClips();
       } else if (event.key.toLowerCase() === "v" && !event.ctrlKey && !event.metaKey) {
         setActiveEditTool("select");
       } else if (event.code === "Space") {
