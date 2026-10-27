@@ -660,6 +660,24 @@ export default function App() {
     setSelectedClipIds((ids) => ids.filter((id) => id !== clipId));
   };
 
+  const rippleRemoveSelection = () => {
+    const ids = selectedClipIds.length ? selectedClipIds : selectedClipId ? [selectedClipId] : [];
+    const removed = project.clips.filter((clip) => ids.includes(clip.id));
+    if (removed.length === 0) return;
+    const blocked = removed.find((clip) => trackSettingsFor(clip.track).locked);
+    if (blocked) return notify("Unlock " + blocked.track + " before ripple editing.");
+    updateProject((current) => ({
+      ...current,
+      clips: current.clips.filter((clip) => !ids.includes(clip.id)).map((clip) => {
+        const shift = removed.filter((item) => item.track === clip.track && item.start + clipDuration(item) <= clip.start + 0.0001).reduce((total, item) => total + clipDuration(item), 0);
+        return { ...clip, start: Math.max(0, clip.start - shift) };
+      })
+    }));
+    setSelectedClipId(undefined);
+    setSelectedClipIds([]);
+    notify("Selection removed and following clips shifted to close the gap.");
+  };
+
   const splitClipAt = (time: number, preferredClipId?: string) => {
     const candidates = preferredClipId
       ? project.clips.filter((clip) => clip.id === preferredClipId)
