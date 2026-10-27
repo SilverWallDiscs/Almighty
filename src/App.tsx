@@ -1054,6 +1054,7 @@ export default function App() {
             <span className="edit-toolbar-divider" />
             <button className="edit-tool-button" onClick={splitAtPlayhead} title="Split selected clip at playhead (S)"><Scissors size={15} /><span>Split</span></button>
             <button className={"edit-tool-button " + (snapEnabled ? "active" : "")} onClick={() => setSnapEnabled((enabled) => !enabled)} title="Toggle snapping to clip edges, cuts and playhead (N)"><Magnet size={15} /><span>Snap</span></button>
+            <button className="edit-tool-button" disabled={!selectedClipId && selectedClipIds.length === 0} onClick={rippleRemoveSelection} title="Delete selection and close its gaps (Shift+Delete)"><ArrowLeftRight size={15} /><span>Ripple</span></button>
             <button className="edit-tool-button" disabled={!selectedClipId && selectedClipIds.length === 0} onClick={removeSelection} title="Delete selected clips without shifting the rest (Delete)"><Trash2 size={15} /><span>Delete</span></button>
           </div>
           <div className="edit-tool-group">
