@@ -202,7 +202,7 @@ fn export_video(project: Value, output_path: String) -> Result<String, String> {
         let desired_start = num(clip, "start", video_duration).max(0.0);
         if let Some(transition_name) = safe_transition(&transition) {
             let requested_blend = num(clip, "transitionDuration", 0.45).clamp(0.1, 2.0);
-            let blend = requested_blend.min(durations[index] * 0.45).min(video_duration.max(0.1) * 0.45).max(0.1);
+            let blend = requested_blend.min(durations[index]).min(video_duration.max(0.1)).max(0.1);
             let required_end = desired_start + blend;
             if required_end > video_duration + 0.001 {
                 let gap = required_end - video_duration;
