@@ -614,14 +614,15 @@ export default function App() {
   };
 
   const addAssetToTimeline = (asset: MediaAsset, track: TrackId = "V1", atTime?: number) => {
+    if (trackSettingsFor(track).locked) return notify("This track is locked.");
     if (track === "V1" && asset.kind === "audio") return notify("Audio-only files belong on Audio 1 or Audio 2.");
     if (track !== "V1" && asset.kind !== "audio" && !asset.hasAudio) return notify("This file has no audio stream to add to an audio track.");
     const sameTrack = project.clips.filter((clip) => clip.track === track);
-    const start = atTime === undefined ? sameTrack.reduce((end, clip) => Math.max(end, clip.start + clipDuration(clip)), 0) : Math.max(0, atTime);
+    const start = atTime === undefined ? sameTrack.reduce((end, clip) => Math.max(end, clip.start + clipDuration(clip)), 0) : snapTimelineTime(atTime);
     const clip = makeClip(asset.id, track, start, asset.duration || 5);
     const clips = [...project.clips, clip];
-    updateProject((current) => ({ ...current, clips: track === "V1" ? reflowVideoClips(clips) : clips }));
-    setSelectedClipId(clip.id); setSelectedMediaId(asset.id);
+    updateProject((current) => ({ ...current, clips }));
+    setSelectedClipId(clip.id); setSelectedClipIds([clip.id]); setSelectedMediaId(asset.id);
     notify("Added " + asset.name + " to " + track + ".");
   };
   const addSoundToTimeline = async (effectId: string) => {
