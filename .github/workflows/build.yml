@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   windows-installer:
@@ -24,10 +24,45 @@ jobs:
         run: npm install
       - name: Build Windows NSIS installer
         run: npm run tauri -- build --bundles nsis
-      - name: Upload installer artifact
+      - name: Prepare preview installer and SHA-256
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist-preview | Out-Null
+          $installer = Get-ChildItem "src-tauri/target/release/bundle/nsis/*-setup.exe" | Select-Object -First 1
+          if (-not $installer) { throw "NSIS installer was not produced." }
+          Copy-Item $installer.FullName "dist-preview/Almighty-Preview-setup.exe"
+          $hash = (Get-FileHash "dist-preview/Almighty-Preview-setup.exe" -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  Almighty-Preview-setup.exe" | Set-Content "dist-preview/Almighty-Preview-setup.exe.sha256" -Encoding ascii
+          @"
+          Commit: $env:GITHUB_SHA
+          Run: $env:GITHUB_RUN_NUMBER
+          Built (UTC): $([DateTime]::UtcNow.ToString("yyyy-MM-dd HH:mm:ss"))
+          "@ | Set-Content "dist-preview/build-info.txt" -Encoding utf8
+      - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
           name: Almighty-Windows-Installer
-          path: src-tauri/target/release/bundle/nsis/*-setup.exe
+          path: dist-preview/*
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 30
+      - name: Publish or update rolling preview release
+        if: github.ref == 'refs/heads/main'
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: preview
+          name: Almighty Preview
+          body: |
+            Compilación de prueba más reciente de la rama main, actualizada automáticamente en cada push.
+
+            Es una versión de desarrollo y puede contener errores. Para reportarlos, incluye el commit indicado en build-info.txt.
+
+            Requisito: FFmpeg y FFprobe deben estar instalados y disponibles en PATH; no vienen incluidos en el instalador.
+          prerelease: true
+          make_latest: false
+          overwrite_files: true
+          files: |
+            dist-preview/Almighty-Preview-setup.exe
+            dist-preview/Almighty-Preview-setup.exe.sha256
+            dist-preview/build-info.txt
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
