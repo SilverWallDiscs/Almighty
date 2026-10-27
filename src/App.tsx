@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type RefObject } from "react";
+import { useCallback, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type RefObject, type SyntheticEvent } from "react";
 import {
   AlertTriangle, ArrowLeftRight, AudioLines, Check, ChevronDown, Clapperboard,
   Clock3, Download, ExternalLink, FileAudio, FileImage, FileVideo, Film, FolderOpen,
@@ -77,8 +77,8 @@ function Preview({
   project: Project;
   timelineTime: number;
   videoRef: RefObject<HTMLVideoElement | null>;
-  onTimeUpdate: (event: React.SyntheticEvent<HTMLVideoElement>) => void;
-  onLoadedMetadata: (event: React.SyntheticEvent<HTMLVideoElement>) => void;
+  onTimeUpdate: (event: SyntheticEvent<HTMLVideoElement>) => void;
+  onLoadedMetadata: (event: SyntheticEvent<HTMLVideoElement>) => void;
   onEnded: () => void;
 }) {
   const activeTitle = project.titles.find((title) => title.start <= timelineTime && title.end >= timelineTime);
@@ -154,6 +154,7 @@ export default function App() {
   const [isScrubbing, setIsScrubbing] = useState(false);
   const [timelineZoom, setTimelineZoom] = useState(86);
   const previewVideoRef = useRef<HTMLVideoElement | null>(null);
+  const audioTimelineRefs = useRef<Map<string, HTMLAudioElement>>(new Map());
   const timelineBoardRef = useRef<HTMLDivElement | null>(null);
   const previewMonitorRef = useRef<HTMLDivElement | null>(null);
 
@@ -286,6 +287,28 @@ export default function App() {
     if (isPlaying) void video.play().catch(() => setIsPlaying(false));
     else video.pause();
   }, [activePreviewAsset?.path, activePreviewAsset?.kind, activePreviewClip?.id, isPlaying, playbackRate, previewVolume, seekRequest]);
+
+  useEffect(() => {
+    const audioClips = project.clips.filter((clip) => clip.track === "A1" || clip.track === "A2");
+    for (const clip of audioClips) {
+      const player = audioTimelineRefs.current.get(clip.id);
+      const asset = project.media.find((media) => media.id === clip.mediaId);
+      if (!player || !asset) continue;
+      const clipEnd = clip.start + clipDuration(clip);
+      const insideClip = currentTime >= clip.start && currentTime < clipEnd && !clip.muted && asset.kind === "audio";
+      player.volume = Math.max(0, Math.min(1, clip.volume * previewVolume));
+      player.playbackRate = playbackRate;
+      if (!isPlaying || !insideClip) {
+        player.pause();
+        continue;
+      }
+      const wantedSourceTime = clip.trimStart + Math.max(0, currentTime - clip.start);
+      if (player.readyState >= 1 && Math.abs(player.currentTime - wantedSourceTime) > 0.32) {
+        try { player.currentTime = wantedSourceTime; } catch { /* The browser will sync after metadata is ready. */ }
+      }
+      if (player.paused) void player.play().catch(() => undefined);
+    }
+  }, [project.clips, project.media, currentTime, isPlaying, playbackRate, previewVolume, seekRequest]);
 
   useEffect(() => {
     if (!isPlaying || activePreviewAsset?.kind === "video") return;
@@ -668,6 +691,11 @@ export default function App() {
       </aside>
     </div>
 
+    <div className="hidden-audio-deck" aria-hidden="true">{project.clips.filter((clip) => clip.track === "A1" || clip.track === "A2").map((clip) => {
+      const asset = project.media.find((media) => media.id === clip.mediaId);
+      if (!asset || asset.kind !== "audio") return null;
+      return <audio key={clip.id} ref={(node) => { if (node) audioTimelineRefs.current.set(clip.id, node); else audioTimelineRefs.current.delete(clip.id); }} src={assetUrl(asset.path)} preload="auto" />;
+    })}</div>
     <footer className="app-statusbar"><div><span className="status-led" /> {runtime?.ffmpegAvailable ? "FFmpeg ready" : "Setup needed: FFmpeg"} <span className="status-separator">·</span> {project.name}</div><div><span>{project.media.length} media</span><span className="status-separator">·</span><span>{project.clips.length} timeline clips</span><span className="status-separator">·</span><span>{project.settings.width}×{project.settings.height} / {project.settings.fps} FPS</span></div></footer>
     {toast && <div className="toast"><span className="toast-icon"><Check size={15} /></span><span>{toast}</span><button onClick={() => setToast("")}><X size={14} /></button></div>}
   </div>;
