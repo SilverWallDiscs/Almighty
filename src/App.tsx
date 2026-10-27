@@ -3,7 +3,7 @@ import {
   AlertTriangle, ArrowLeftRight, AudioLines, Check, ChevronDown, Clapperboard,
   Clock3, Download, ExternalLink, FileAudio, FileImage, FileVideo, Film, FolderOpen,
   HardDrive, Layers3, Loader2, Music2, Palette, Pause, Play, Plus, RefreshCw, Redo2, Save,
-  Scissors, Search, Settings2, SlidersHorizontal, SkipBack, SkipForward, Sparkles,
+  MousePointer2, Scissors, Search, Settings2, SlidersHorizontal, SkipBack, SkipForward, Sparkles,
   Trash2, Type, Undo2, Upload, Volume2, Wand2, Waves, X, Zap, Monitor, Maximize2, ZoomIn, ZoomOut
 } from "lucide-react";
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
@@ -13,6 +13,8 @@ import type { EffectId, MediaAsset, Project, RuntimeInfo, TitleOverlay, Timeline
 import { APP_VERSION, clipDuration, createEmptyProject, fileName, formatTime, makeClip, mediaKindFromPath, reflowVideoClips, timelineDuration, TRACKS } from "./lib/project";
 
 type ToolId = "media" | "audio" | "effects" | "transitions" | "titles" | "settings";
+type EditTool = "select" | "razor";
+type PreviewTransition = { fromAsset: MediaAsset; fromClip: TimelineClip; toAsset: MediaAsset; toClip: TimelineClip; progress: number; id: TransitionId };
 type ProbeResult = { duration: number; width?: number; height?: number; hasAudio: boolean; hasVideo: boolean };
 const TOOLS: { id: ToolId; label: string; icon: typeof Film; hint: string }[] = [
   { id: "media", label: "Media", icon: Film, hint: "Your files" },
@@ -69,23 +71,76 @@ function IconForMedia({ kind }: { kind: MediaAsset["kind"] }) {
   if (kind === "image") return <FileImage size={15} />;
   return <FileVideo size={15} />;
 }
+function previewEffectFilter(effects: EffectId[] = []): string {
+  const filters: Partial<Record<EffectId, string>> = {
+    cinematic: "contrast(1.12) saturate(1.15) brightness(.98)",
+    warm: "sepia(.16) saturate(1.12) hue-rotate(-8deg)",
+    cool: "hue-rotate(14deg) saturate(.9) brightness(.98)",
+    monochrome: "grayscale(1)",
+    vintage: "sepia(.38) saturate(.78) contrast(.92) brightness(1.04)",
+    blur: "blur(2.5px)",
+    sharpen: "contrast(1.12) saturate(1.04)",
+    invert: "invert(1)",
+    vignette: "contrast(1.03)",
+    boost: "saturate(1.42) contrast(1.12)",
+    filmgrain: "contrast(1.04)"
+  };
+  return effects.map((effect) => filters[effect]).filter(Boolean).join(" ") || "none";
+}
+function EffectDecorations({ effects }: { effects: EffectId[] }) {
+  return <>{effects.includes("vignette") && <div className="preview-vignette" />}{effects.includes("filmgrain") && <div className="preview-filmgrain" />}</>;
+}
+function transitionIncomingStyle(id: TransitionId, progress: number) {
+  const p = Math.max(0, Math.min(1, progress));
+  if (id === "wipeleft" || id === "smoothleft") return { clipPath: "inset(0 " + (100 - p * 100) + "% 0 0)" };
+  if (id === "wiperight") return { clipPath: "inset(0 0 0 " + (100 - p * 100) + "%)" };
+  if (id === "circleopen" || id === "radial") return { clipPath: "circle(" + (p * 75) + "% at 50% 50%)" };
+  if (id === "circleclose") return { clipPath: "circle(" + (100 - p * 75) + "% at 50% 50%)" };
+  if (id === "slideleft") return { transform: "translateX(" + ((1 - p) * 100) + "%)" };
+  if (id === "slideright") return { transform: "translateX(" + ((p - 1) * 100) + "%)" };
+  return { opacity: p };
+}
 function Preview({
-  asset, clip, project, timelineTime, videoRef, onTimeUpdate, onLoadedMetadata, onEnded
+  asset, clip, project, timelineTime, videoRef, transitionVideoRef, transition, onTimeUpdate, onLoadedMetadata, onEnded
 }: {
   asset?: MediaAsset;
   clip?: TimelineClip;
   project: Project;
   timelineTime: number;
   videoRef: RefObject<HTMLVideoElement | null>;
+  transitionVideoRef: RefObject<HTMLVideoElement | null>;
+  transition?: PreviewTransition;
   onTimeUpdate: (event: SyntheticEvent<HTMLVideoElement>) => void;
   onLoadedMetadata: (event: SyntheticEvent<HTMLVideoElement>) => void;
   onEnded: () => void;
 }) {
   const activeTitle = project.titles.find((title) => title.start <= timelineTime && title.end >= timelineTime);
+  const titleOverlay = activeTitle && <div className="preview-title" style={{ color: activeTitle.color, top: (activeTitle.y * 100) + "%" }}>{activeTitle.text}</div>;
   if (!asset) return <div className="empty-preview"><div className="empty-preview-mark"><Clapperboard size={28} /></div><strong>Program monitor</strong><span>Move the playhead over a clip to see the edit here.</span></div>;
-  if (asset.kind === "image") return <div className="preview-frame"><img className="preview-media" src={assetUrl(asset.path)} alt={asset.name} />{activeTitle && <div className="preview-title" style={{ color: activeTitle.color, top: (activeTitle.y * 100) + "%" }}>{activeTitle.text}</div>}</div>;
+  if (transition) {
+    const outgoingOpacity = transition.id === "fade" || transition.id === "dissolve" ? 1 - transition.progress : 1;
+    const fromFilter = previewEffectFilter(transition.fromClip.effects);
+    const toFilter = previewEffectFilter(transition.toClip.effects);
+    const fromSourceTime = transition.fromClip.trimStart + Math.max(0, timelineTime - transition.fromClip.start);
+    return <div className="preview-frame transition-preview">
+      <div className="transition-layer transition-outgoing" style={{ opacity: outgoingOpacity }}>
+        {transition.fromAsset.kind === "image"
+          ? <img className="preview-media" src={assetUrl(transition.fromAsset.path)} alt={transition.fromAsset.name} style={{ filter: fromFilter }} />
+          : <video ref={transitionVideoRef} key={transition.fromAsset.path} className="preview-media" src={assetUrl(transition.fromAsset.path)} muted playsInline preload="auto" style={{ filter: fromFilter }} onLoadedMetadata={(event) => { try { event.currentTarget.currentTime = Math.max(0, fromSourceTime); } catch { /* Metadata can settle after the first frame. */ } }} />}
+        <EffectDecorations effects={transition.fromClip.effects} />
+      </div>
+      <div className={"transition-layer transition-incoming transition-" + transition.id} style={transitionIncomingStyle(transition.id, transition.progress)}>
+        {asset.kind === "image"
+          ? <img className="preview-media" src={assetUrl(asset.path)} alt={asset.name} style={{ filter: toFilter }} />
+          : <video ref={videoRef} key={asset.path} className="preview-media" src={assetUrl(asset.path)} controls={false} playsInline preload="auto" style={{ filter: toFilter }} onTimeUpdate={onTimeUpdate} onLoadedMetadata={onLoadedMetadata} onEnded={onEnded} />}
+        <EffectDecorations effects={transition.toClip.effects} />
+      </div>
+      {titleOverlay}
+    </div>;
+  }
+  if (asset.kind === "image") return <div className="preview-frame"><img className="preview-media" src={assetUrl(asset.path)} alt={asset.name} style={{ filter: previewEffectFilter(clip?.effects) }} /><EffectDecorations effects={clip?.effects ?? []} />{titleOverlay}</div>;
   if (asset.kind === "audio") return <div className="audio-preview"><div className="audio-preview-art"><AudioLines size={50} strokeWidth={1.4} /></div><strong>{asset.name}</strong><span>Audio source · {formatTime(asset.duration)}</span><audio controls preload="metadata" src={assetUrl(asset.path)} /></div>;
-  return <div className="preview-frame"><video ref={videoRef} key={asset.path} className="preview-media" src={assetUrl(asset.path)} controls={false} playsInline preload="auto" onTimeUpdate={onTimeUpdate} onLoadedMetadata={onLoadedMetadata} onEnded={onEnded} />{activeTitle && <div className="preview-title" style={{ color: activeTitle.color, top: (activeTitle.y * 100) + "%" }}>{activeTitle.text}</div>}<div className="monitor-corner monitor-corner-tl" /><div className="monitor-corner monitor-corner-br" /></div>;
+  return <div className="preview-frame"><video ref={videoRef} key={asset.path} className="preview-media" src={assetUrl(asset.path)} controls={false} playsInline preload="auto" style={{ filter: previewEffectFilter(clip?.effects) }} onTimeUpdate={onTimeUpdate} onLoadedMetadata={onLoadedMetadata} onEnded={onEnded} /><EffectDecorations effects={clip?.effects ?? []} />{titleOverlay}<div className="monitor-corner monitor-corner-tl" /><div className="monitor-corner monitor-corner-br" /></div>;
 }
 function formatTimecode(seconds: number, fps: number): string {
   const safe = Math.max(0, seconds || 0);
@@ -153,7 +208,9 @@ export default function App() {
   const [seekRequest, setSeekRequest] = useState(0);
   const [isScrubbing, setIsScrubbing] = useState(false);
   const [timelineZoom, setTimelineZoom] = useState(86);
+  const [activeEditTool, setActiveEditTool] = useState<EditTool>("select");
   const previewVideoRef = useRef<HTMLVideoElement | null>(null);
+  const transitionVideoRef = useRef<HTMLVideoElement | null>(null);
   const audioTimelineRefs = useRef<Map<string, HTMLAudioElement>>(new Map());
   const timelineBoardRef = useRef<HTMLDivElement | null>(null);
   const previewMonitorRef = useRef<HTMLDivElement | null>(null);
@@ -166,7 +223,17 @@ export default function App() {
   const filteredMedia = project.media.filter((media) => media.name.toLowerCase().includes(search.toLowerCase()));
   const totalDuration = project.clips.filter((clip) => clip.track === "V1").reduce((total, clip) => Math.max(total, clip.start + clipDuration(clip)), 0);
   const videoTimelineClips = project.clips.filter((clip) => clip.track === "V1").slice().sort((a, b) => a.start - b.start);
-  const activePreviewClip = videoTimelineClips.find((clip) => currentTime >= clip.start - 0.0001 && currentTime < clip.start + clipDuration(clip) - 0.0001);
+  const transitionPreview = videoTimelineClips.slice(1).map((toClip, index): PreviewTransition | undefined => {
+    const fromClip = videoTimelineClips[index];
+    const blendDuration = 0.45;
+    if (toClip.transitionBefore === "cut" || currentTime < toClip.start || currentTime >= toClip.start + blendDuration) return undefined;
+    const fromAsset = project.media.find((media) => media.id === fromClip.mediaId);
+    const toAsset = project.media.find((media) => media.id === toClip.mediaId);
+    if (!fromAsset || !toAsset) return undefined;
+    return { fromAsset, fromClip, toAsset, toClip, progress: Math.max(0, Math.min(1, (currentTime - toClip.start) / blendDuration)), id: toClip.transitionBefore };
+  }).find((item): item is PreviewTransition => Boolean(item));
+  const normalPreviewClip = videoTimelineClips.find((clip) => currentTime >= clip.start - 0.0001 && currentTime < clip.start + clipDuration(clip) - 0.0001);
+  const activePreviewClip = transitionPreview?.toClip ?? normalPreviewClip;
   const activePreviewAsset = activePreviewClip
     ? project.media.find((media) => media.id === activePreviewClip.mediaId)
     : videoTimelineClips.length === 0 ? selectedAsset : undefined;
@@ -289,6 +356,19 @@ export default function App() {
   }, [activePreviewAsset?.path, activePreviewAsset?.kind, activePreviewClip?.id, isPlaying, playbackRate, previewVolume, seekRequest]);
 
   useEffect(() => {
+    const video = transitionVideoRef.current;
+    if (!video || !transitionPreview) return;
+    const sourceTime = transitionPreview.fromClip.trimStart + Math.max(0, currentTime - transitionPreview.fromClip.start);
+    video.muted = true;
+    video.playbackRate = playbackRate;
+    if (video.readyState >= 1 && (Math.abs(video.currentTime - sourceTime) > 0.6 || seekRequest > 0)) {
+      try { video.currentTime = Math.max(0, sourceTime); } catch { /* Wait for metadata. */ }
+    }
+    if (isPlaying) void video.play().catch(() => undefined);
+    else video.pause();
+  }, [transitionPreview?.fromAsset.path, transitionPreview?.fromClip.id, isPlaying, playbackRate, seekRequest]);
+
+  useEffect(() => {
     const audioClips = project.clips.filter((clip) => clip.track === "A1" || clip.track === "A2");
     for (const clip of audioClips) {
       const player = audioTimelineRefs.current.get(clip.id);
@@ -335,7 +415,21 @@ export default function App() {
     const onKeyDown = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null;
       if (target && (["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName) || target.isContentEditable)) return;
-      if (event.code === "Space") {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "z") {
+        event.preventDefault();
+        if (event.shiftKey) redo(); else undo();
+      } else if ((event.key.toLowerCase() === "s" || event.key.toLowerCase() === "b") && !event.ctrlKey && !event.metaKey) {
+        event.preventDefault();
+        splitAtPlayhead();
+      } else if (event.key.toLowerCase() === "c" && !event.ctrlKey && !event.metaKey) {
+        event.preventDefault();
+        setActiveEditTool((tool) => tool === "razor" ? "select" : "razor");
+      } else if ((event.key === "Delete" || event.key === "Backspace") && selectedClipId) {
+        event.preventDefault();
+        removeClip(selectedClipId);
+      } else if (event.key.toLowerCase() === "v" && !event.ctrlKey && !event.metaKey) {
+        setActiveEditTool("select");
+      } else if (event.code === "Space") {
         event.preventDefault();
         togglePlayback();
       } else if (event.code === "ArrowLeft") {
@@ -435,9 +529,58 @@ export default function App() {
     setSelectedClipId(undefined);
   };
 
+  const splitClipAt = (time: number, preferredClipId?: string) => {
+    const candidates = preferredClipId
+      ? project.clips.filter((clip) => clip.id === preferredClipId)
+      : project.clips.filter((clip) => time > clip.start + 0.04 && time < clip.start + clipDuration(clip) - 0.04).sort((a, b) => (a.track === "V1" ? -1 : 1));
+    const clip = candidates[0] ?? project.clips.filter((item) => item.track === "V1" && time > item.start + 0.04 && time < item.start + clipDuration(item) - 0.04)[0];
+    if (!clip) return notify("Place the playhead inside a clip, then use Split.");
+    const offset = time - clip.start;
+    if (offset <= 0.04 || offset >= clipDuration(clip) - 0.04) return notify("The playhead must be inside the selected clip to split it.");
+    const sourceCut = clip.trimStart + offset;
+    const secondHalf: TimelineClip = {
+      ...clip,
+      id: Math.random().toString(36).slice(2) + Date.now().toString(36),
+      start: time,
+      trimStart: sourceCut,
+      transitionBefore: "cut"
+    };
+    updateProject((current) => {
+      const updated = current.clips.map((item) => item.id === clip.id ? { ...item, trimEnd: sourceCut } : item);
+      const withSplit = [...updated, secondHalf];
+      return { ...current, clips: clip.track === "V1" ? reflowVideoClips(withSplit) : withSplit };
+    });
+    setSelectedClipId(secondHalf.id);
+    setSelectedMediaId(clip.mediaId);
+    setIsPlaying(false);
+    seekTo(time);
+    notify("Clip split at " + formatTime(time) + ".");
+  };
+  const splitAtPlayhead = () => splitClipAt(currentTime, selectedClipId);
+  const applyTransitionBefore = (clipId: string, transitionId: TransitionId) => {
+    const clip = project.clips.find((item) => item.id === clipId);
+    if (!clip || clip.track !== "V1") return notify("Choose a video clip after a cut to apply a transition.");
+    const ordered = videoTimelineClips;
+    if (ordered[0]?.id === clip.id && transitionId !== "cut") return notify("A transition needs a preceding video clip. Drop it on a cut between clips.");
+    updateProject((current) => ({
+      ...current,
+      clips: reflowVideoClips(current.clips.map((item) => item.id === clipId ? { ...item, transitionBefore: transitionId } : item))
+    }));
+    setSelectedClipId(clipId);
+    notify(transitionId === "cut" ? "Transition removed." : "Transition applied between clips.");
+  };
+
   const dropOnTrack = (event: ReactDragEvent<HTMLDivElement>, track: TrackId) => {
     event.preventDefault();
     const targetTime = Math.max(0, (event.clientX - event.currentTarget.getBoundingClientRect().left) / pxPerSecond);
+    const transitionId = event.dataTransfer.getData("application/x-almighty-transition") as TransitionId;
+    if (transitionId && track === "V1") {
+      const sorted = project.clips.filter((clip) => clip.track === "V1").slice().sort((a, b) => a.start - b.start);
+      const nextCut = sorted.slice(1).map((clip) => ({ clip, distance: Math.abs(clip.start - targetTime) })).sort((a, b) => a.distance - b.distance)[0];
+      if (!nextCut || nextCut.distance > Math.max(0.85, 36 / pxPerSecond)) return notify("Drop a transition directly on a cut between two video clips.");
+      applyTransitionBefore(nextCut.clip.id, transitionId);
+      return;
+    }
     const movingClipId = event.dataTransfer.getData("application/x-almighty-clip");
     if (movingClipId) {
       const movingClip = project.clips.find((clip) => clip.id === movingClipId);
@@ -603,7 +746,7 @@ export default function App() {
 
         {activeTool === "transitions" && <div className="panel-content">
           <div className="section-intro compact"><div className="intro-art transition-art"><ArrowLeftRight size={22} /></div><strong>Move between moments</strong><span>Apply a transition to the selected clip. It blends from the clip before it.</span></div>
-          <div className="transition-list">{TRANSITIONS.map((transition) => <button key={transition.id} className={"transition-card " + (selectedClip?.transitionBefore === transition.id ? "applied" : "")} onClick={() => { if (!selectedClip || selectedClip.track !== "V1") return notify("Select a video clip in Video 1 first."); updateClip(selectedClip.id, (clip) => ({ ...clip, transitionBefore: transition.id })); }}><span className={"transition-preview transition-" + transition.id}><i /><i /></span><span className="transition-copy"><strong>{transition.name}</strong><small>{transition.note}</small></span>{selectedClip?.transitionBefore === transition.id ? <Check size={15} className="transition-check" /> : null}</button>)}</div>
+          <div className="transition-list">{TRANSITIONS.map((transition) => <button key={transition.id} draggable={transition.id !== "cut"} onDragStart={(event) => { event.dataTransfer.setData("application/x-almighty-transition", transition.id); event.dataTransfer.effectAllowed = "copy"; }} className={"transition-card " + (selectedClip?.transitionBefore === transition.id ? "applied" : "")} onClick={() => { if (!selectedClip || selectedClip.track !== "V1") return notify("Select a video clip in Video 1 first."); applyTransitionBefore(selectedClip.id, transition.id); }} title={transition.id === "cut" ? "Click to remove the transition" : "Drag onto a cut between two video clips"}><span className={"transition-preview transition-" + transition.id}><i /><i /></span><span className="transition-copy"><strong>{transition.name}</strong><small>{transition.note}</small></span>{selectedClip?.transitionBefore === transition.id ? <Check size={15} className="transition-check" /> : null}</button>)}</div>
           {!selectedClip && <div className="inline-hint"><AlertTriangle size={14} /> Select a video clip in the timeline first.</div>}
         </div>}
 
@@ -634,7 +777,7 @@ export default function App() {
           </div>
           <div className="preview-stage">
             <div className="preview-monitor" ref={previewMonitorRef}>
-              <Preview asset={activePreviewAsset} clip={activePreviewClip} project={project} timelineTime={currentTime} videoRef={previewVideoRef} onTimeUpdate={handleVideoTimeUpdate} onLoadedMetadata={handleVideoLoadedMetadata} onEnded={handleVideoEnded} />
+              <Preview asset={activePreviewAsset} clip={activePreviewClip} project={project} timelineTime={currentTime} videoRef={previewVideoRef} transitionVideoRef={transitionVideoRef} transition={transitionPreview} onTimeUpdate={handleVideoTimeUpdate} onLoadedMetadata={handleVideoLoadedMetadata} onEnded={handleVideoEnded} />
               {activePreviewAsset?.kind === "video" && !isPlaying && <button className="monitor-play-overlay" aria-label="Play preview" onClick={togglePlayback}><Play size={23} fill="currentColor" /></button>}
               {activePreviewAsset && <div className="monitor-overlay-top"><span>{activePreviewAsset.name}</span><span>{activePreviewAsset.kind === "image" ? "STILL" : activePreviewAsset.kind.toUpperCase()}</span></div>}
             </div>
@@ -661,7 +804,21 @@ export default function App() {
             </div>
           </div>
         </section>
-        <section className="timeline-section">
+        <div className="edit-toolbar" role="toolbar" aria-label="Editing tools">
+          <div className="edit-tool-group">
+            <button className={"edit-tool-button " + (activeEditTool === "select" ? "active" : "")} onClick={() => setActiveEditTool("select")} title="Selection tool (V)"><MousePointer2 size={15} /><span>Select</span></button>
+            <button className={"edit-tool-button " + (activeEditTool === "razor" ? "active" : "")} onClick={() => setActiveEditTool("razor")} title="Razor tool (C): click a clip to split it"><Scissors size={15} /><span>Razor</span></button>
+            <span className="edit-toolbar-divider" />
+            <button className="edit-tool-button" onClick={splitAtPlayhead} title="Split selected clip at playhead (S)"><Scissors size={15} /><span>Split</span></button>
+            <button className="edit-tool-button" disabled={!selectedClip} onClick={() => selectedClip && removeClip(selectedClip.id)} title="Delete selected clip (Delete)"><Trash2 size={15} /><span>Delete</span></button>
+          </div>
+          <div className="edit-tool-group">
+            <button className="edit-tool-button" disabled={!past.length} onClick={undo} title="Undo (Ctrl+Z)"><Undo2 size={15} /><span>Undo</span></button>
+            <button className="edit-tool-button" disabled={!future.length} onClick={redo} title="Redo (Ctrl+Shift+Z)"><Redo2 size={15} /><span>Redo</span></button>
+            <span className="edit-toolbar-hint">{activeEditTool === "razor" ? "Click a clip to cut at that frame" : "Drag media to a track · select a clip to edit"}</span>
+          </div>
+        </div>
+        <section className={"timeline-section tool-" + activeEditTool}>
           <div className="timeline-header">
             <div><div className="timeline-title"><Layers3 size={16} /><h3>Timeline</h3><span className="clip-count">{project.clips.length} clips</span><span className="timeline-playback-state">{isPlaying ? "PLAYING" : "READY"}</span></div><p>Click the ruler to seek · drag the playhead · Space to play/pause</p></div>
             <div className="timeline-tools">
@@ -682,13 +839,14 @@ export default function App() {
                 {trackClips.map((clip) => {
                   const asset = project.media.find((media) => media.id === clip.mediaId);
                   const duration = clipDuration(clip);
-                  return <button key={clip.id} draggable onDragStart={(event) => { event.dataTransfer.setData("application/x-almighty-clip", clip.id); event.dataTransfer.effectAllowed = "move"; }} className={"timeline-clip " + clip.track.toLowerCase() + "-clip " + (selectedClipId === clip.id ? "selected" : "")} style={{ left: clip.start * pxPerSecond, width: Math.max(74, duration * pxPerSecond - 4) }} onClick={(event) => { event.stopPropagation(); setSelectedClipId(clip.id); setSelectedMediaId(clip.mediaId); seekTo(clip.start); }}>
+                  return <button key={clip.id} draggable={activeEditTool !== "razor"} onDragStart={(event) => { event.dataTransfer.setData("application/x-almighty-clip", clip.id); event.dataTransfer.effectAllowed = "move"; }} className={"timeline-clip " + clip.track.toLowerCase() + "-clip " + (selectedClipId === clip.id ? "selected" : "")} style={{ left: clip.start * pxPerSecond, width: Math.max(74, duration * pxPerSecond - 4) }} onClick={(event) => { event.stopPropagation(); const clickTime = clip.start + Math.max(0, Math.min(duration, (event.clientX - event.currentTarget.getBoundingClientRect().left) / pxPerSecond)); if (activeEditTool === "razor") { setSelectedClipId(clip.id); splitClipAt(clickTime, clip.id); return; } setSelectedClipId(clip.id); setSelectedMediaId(clip.mediaId); seekTo(clip.start); }}>
                     <span className="clip-edge left-edge" /><span className="clip-art">{clip.track === "V1" ? <Film size={13} /> : <Waves size={13} />}</span><span className="clip-text"><strong>{asset?.name ?? "Missing media"}</strong><small>{formatTime(duration)}{clip.effects.length ? " · " + clip.effects.length + " FX" : ""}</small></span>
                     {clip.track === "V1" && clip.transitionBefore !== "cut" && <span className="clip-transition" title={clip.transitionBefore}><ArrowLeftRight size={11} /></span>}
                     {clip.track !== "V1" && <span className="waveform-decoration">{Array.from({ length: 30 }, (_, i) => <i key={i} style={{ height: (4 + ((i * 17 + clip.id.length * 7) % 21)) + "px" }} />)}</span>}
                     <span className="clip-edge right-edge" />
                   </button>;
                 })}
+                {track.id === "V1" && trackClips.slice().sort((a, b) => a.start - b.start).slice(1).map((clip) => <button key={"transition-" + clip.id} className={"transition-drop-zone " + (clip.transitionBefore !== "cut" ? "has-transition" : "")} style={{ left: clip.start * pxPerSecond - 13 }} title={clip.transitionBefore === "cut" ? "Drop a transition here" : "Transition: " + clip.transitionBefore + " · drop another to replace"} aria-label={"Transition at cut before " + (project.media.find((item) => item.id === clip.mediaId)?.name ?? "clip")} onClick={(event) => { event.stopPropagation(); setSelectedClipId(clip.id); setSelectedMediaId(clip.mediaId); setActiveTool("transitions"); seekTo(clip.start); }} onDragOver={(event) => { event.preventDefault(); event.stopPropagation(); event.dataTransfer.dropEffect = "copy"; }} onDrop={(event) => { event.preventDefault(); event.stopPropagation(); const transitionId = event.dataTransfer.getData("application/x-almighty-transition") as TransitionId; if (transitionId) applyTransitionBefore(clip.id, transitionId); }}><ArrowLeftRight size={11} /></button>)}
                 {trackClips.length === 0 && <button className="track-empty" onClick={(event) => { event.stopPropagation(); setActiveTool(track.id === "V1" ? "media" : "audio"); }}>{track.id === "V1" ? "Add video or image clips" : "Add audio, music or sound effects"} <Plus size={13} /></button>}
               </div></div>;
             })}
