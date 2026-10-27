@@ -1009,7 +1009,7 @@ export default function App() {
             <span className="edit-toolbar-hint">{activeEditTool === "razor" ? "Click a clip to cut at that frame" : "Drag media to a track · select a clip to edit"}</span>
           </div>
         </div>
-        <section className={"timeline-section tool-" + activeEditTool}>
+        <section className={"timeline-section tool-" + activeEditTool} style={{ flexBasis: timelinePercent + "%" }}>
           <div className="timeline-header">
             <div><div className="timeline-title"><Layers3 size={16} /><h3>Timeline</h3><span className="clip-count">{project.clips.length} clips</span><span className="timeline-playback-state">{isPlaying ? "PLAYING" : "READY"}</span></div><p>Click the ruler to seek · drag the playhead · Space to play/pause</p></div>
             <div className="timeline-tools">
@@ -1020,7 +1020,7 @@ export default function App() {
               <button className="button button-quiet button-small" onClick={saveProjectFile}><Save size={14} /> Save project</button>
             </div>
           </div>
-          <div className="timeline-scroll"><div ref={timelineBoardRef} className="timeline-board" style={{ width: timelineWidth + 72 }} onPointerMove={(event) => { if (isScrubbing) scrubToClientX(event.clientX); }} onPointerUp={() => setIsScrubbing(false)} onPointerCancel={() => setIsScrubbing(false)}>
+          <div className="timeline-scroll"><div ref={timelineBoardRef} className="timeline-board" style={{ width: timelineWidth + 72 }} onPointerMove={handleTimelinePointerMove} onPointerUp={finishTimelinePointer} onPointerCancel={finishTimelinePointer}>
             <div className="timeline-ruler"><div className="track-label ruler-label"><Clock3 size={13} /> TIME</div><div className="ruler-content" style={{ width: timelineWidth }} onClick={(event) => seekFromElement(event.clientX, event.currentTarget)}>{Array.from({ length: Math.ceil(timelineEnd / 5) + 1 }, (_, index) => index * 5).map((seconds) => <div className="ruler-tick" key={seconds} style={{ left: seconds * pxPerSecond }}><span>{formatTime(seconds)}</span><i /></div>)}</div></div>
             <button className="timeline-playhead" style={{ left: 72 + currentTime * pxPerSecond }} title="Drag to scrub the timeline" onPointerDown={beginScrubbing} aria-label="Timeline playhead"><span className="playhead-head" /><span className="playhead-line" /></button>
             {TRACKS.map((track) => {
